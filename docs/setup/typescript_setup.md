@@ -92,3 +92,13 @@ npm install
 - `npm run typecheck`
 - `npm test`
 - `npm run build`
+
+## TypeScript実装の手動確認
+
+ローカルにNode.jsがない環境では、実装ブランチをGitHubへpushし、GitHub Actionsで`npm install`、Lint、型検査、テスト、ビルドを実行する。Actionsで生成された`dist/`を含む成果物を取得した後、Node.jsがある確認環境でリポジトリルートをHTTP配信する。
+
+```powershell
+python -m http.server 8000
+```
+
+ブラウザで`http://localhost:8000/`を開く。`file://`による直接起動は、ES Modulesの読み込み制約があるため対象外とする。

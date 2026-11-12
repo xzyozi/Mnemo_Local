@@ -20,7 +20,7 @@ const bootstrap = (): void => {
     const results = document.querySelector<HTMLOListElement>('#results');
     if (!chooseButton || !searchInput || !searchButton || !status || !results) return;
 
-    const index = new SearchIndex();
+    let index = new SearchIndex();
     chooseButton.addEventListener('click', async () => {
         if (!('showDirectoryPicker' in window)) {
             status.textContent = 'File System Access APIに対応したChromium系ブラウザが必要です。';
@@ -30,19 +30,31 @@ const bootstrap = (): void => {
             const directory = await (window as Window & {
                 showDirectoryPicker: () => Promise<FileSystemDirectoryHandle>;
             }).showDirectoryPicker();
-            const batch = await readMarkdownDirectory(directory);
+            const readResult = await readMarkdownDirectory(directory);
+            if (!readResult.ok) {
+                status.textContent = readResult.error.message;
+                return;
+            }
             const entries: SearchEntry[] = [];
-            for (const file of batch.files) {
+            const excluded: string[] = [];
+            for (const file of readResult.value.files) {
                 const normalized = await normalize(file, webCryptoHasher);
-                if (!normalized.ok) continue;
+                if (!normalized.ok) {
+                    excluded.push(`${file.path}: ${normalized.error}`);
+                    continue;
+                }
                 const chunks = await chunk(normalized.value, webCryptoHasher);
                 entries.push(...chunks.map((item) => ({ source: normalized.value, chunk: item })));
             }
-            index.clear();
-            const added = index.add(entries);
-            status.textContent = added.ok
-                ? `${entries.length}チャンクを読み込みました。失敗: ${batch.failures.length}件`
-                : `読み込みに失敗しました: ${added.error}`;
+            const nextIndex = new SearchIndex();
+            const added = nextIndex.add(entries);
+            if (!added.ok) {
+                status.textContent = '登録対象を減らして、もう一度フォルダを選択してください。';
+                return;
+            }
+            index = nextIndex;
+            status.textContent = `${entries.length}チャンクを読み込みました。` +
+                `ファイル読込失敗: ${readResult.value.failures.length}件、除外: ${excluded.length}件`;
         } catch {
             status.textContent = 'フォルダを読み込めませんでした。';
         }
