@@ -76,8 +76,10 @@ MemoryChunk = {
 }
 
 Result<T, E> = { ok: true, value: T } | { ok: false, error: E }
-NormalizeError = "PATH_INVALID" | "DOCUMENT_EMPTY" | "INPUT_READ_FAILED"
-IndexError = "INDEX_SIZE_LIMIT" | "SEARCH_FAILED"
+InputReadError = "DIRECTORY_READ_FAILED" | "FILE_READ_FAILED"
+InputReadResult = Result<RawFile, InputReadError>
+NormalizeError = "PATH_INVALID" | "DOCUMENT_EMPTY"
+IndexError = "INDEX_SIZE_LIMIT" | "INDEX_BUILD_FAILED"
 SearchError = "QUERY_EMPTY" | "SEARCH_FAILED"
 SearchOptions = { sourceIds?: string[], updatedAfter?: number, updatedBefore?: number }
 Hasher = { digest(value: string): Promise<string> }
@@ -88,20 +90,21 @@ Hasher = { digest(value: string): Promise<string> }
 **責務**: 利用者が選択した入力を読み取り、ファイル単位の未加工データを返す。
 
 ```text
-readMarkdownDirectory(): Promise<RawFile[]>
-readDroppedFile(file: File): Promise<RawFile>
+readMarkdownDirectory(): Promise<InputReadResult[]>
+readDroppedFile(file: File): Promise<InputReadResult>
 ```
 
 **契約**:
 
 - 利用者の明示操作なしにファイルを読み取らない。
 - `.md`以外のMarkdownフォルダ内ファイルは初期対象外とする。
-- 読み取り失敗は`INPUT_READ_FAILED`として返す。
-- 入力本文をログへ出力しない。
+- ディレクトリ列挙に失敗した場合は`DIRECTORY_READ_FAILED`を返し、処理を終了する。
+- 個別ファイルの読み取りに失敗した場合は`FILE_READ_FAILED`を含む失敗結果を返し、他ファイルの処理は継続する。
+- UIは成功件数、失敗件数、失敗ファイル名を表示する。
 
 ### 2.2 Normalizer
 
-**責務**: RawFileまたは履歴・ブックマークレコードを検証し、SourceDocumentを生成する。
+**責務**: RawFileを検証し、SourceDocumentを生成する。
 
 ```text
 normalize(raw: RawFile, hasher: Hasher): Promise<Result<SourceDocument, NormalizeError>>
@@ -160,7 +163,9 @@ search(query: string, options?: SearchOptions): Result<SearchResult[], SearchErr
 - ASCII単語は小文字化し、Unicode正規化を適用する。
 - 結果はスコア降順、同点時は`sourceTimestamp`降順、さらに`chunkId`昇順で安定ソートする。
 - 空検索語は検索せず、利用者へ入力を促す。
-- 初期のメモリ上限は50,000チャンクとし、超過時は`INDEX_SIZE_LIMIT`を返す。
+- 50,000チャンクを超える場合は、状態を変更せず`INDEX_SIZE_LIMIT`を返す。部分登録は行わない。
+- 予期しない登録障害は`INDEX_BUILD_FAILED`として返す。
+- 検索時の予期しない障害は`SEARCH_FAILED`として返す。
 
 ### 2.5 SearchResult
 
@@ -185,7 +190,7 @@ sequenceDiagram
     participant Index as SearchIndex
     participant UI as 検索UI
 
-    User->>Reader: フォルダまたはファイルを選択
+    User->>Reader: Markdownフォルダを選択
     Reader-->>Normalizer: RawFile
     Normalizer-->>Chunker: SourceDocument + Hasher
     Chunker-->>Index: SearchEntry[]
@@ -213,14 +218,16 @@ sequenceDiagram
 
 ## 4. エラー分類
 
-| コード              | 種別   | 発生条件                   | UIの扱い                         |
-| :------------------ | :----- | :------------------------- | :------------------------------- |
-| `INPUT_READ_FAILED` | 入力   | ファイル読み取りに失敗     | 対象ファイル名と再試行を表示     |
-| `PATH_INVALID`      | 入力   | 親参照・絶対パスなどを検出 | 対象ファイルを除外し通知する     |
-| `DOCUMENT_EMPTY`    | 正規化 | 本文が空                   | 対象Documentを検索対象外にする   |
-| `INDEX_SIZE_LIMIT`  | 検索   | 50,000チャンク超過         | 絞り込み条件を要求する           |
-| `QUERY_EMPTY`       | 検索   | 検索語が空                 | 検索を実行せず入力を促す         |
-| `SEARCH_FAILED`     | 検索   | インデックス処理に失敗     | 再構築を案内しデータを破棄しない |
+| コード                  | 種別   | 発生条件                     | UIの扱い                             |
+| :---------------------- | :----- | :--------------------------- | :----------------------------------- |
+| `DIRECTORY_READ_FAILED` | 入力   | ディレクトリ列挙に失敗       | 読み込みを終了し再試行を表示         |
+| `FILE_READ_FAILED`      | 入力   | 個別ファイルの読み取りに失敗 | 対象ファイルを除外し他ファイルを継続 |
+| `PATH_INVALID`          | 入力   | 親参照・絶対パスなどを検出   | 対象ファイルを除外し通知する         |
+| `DOCUMENT_EMPTY`        | 正規化 | 本文が空                     | 対象Documentを検索対象外にする       |
+| `INDEX_SIZE_LIMIT`      | 検索   | 50,000チャンク超過           | 登録対象を絞って再実行する           |
+| `INDEX_BUILD_FAILED`    | 検索   | インデックス登録に失敗       | 更新前の状態を保持し再試行を案内     |
+| `QUERY_EMPTY`           | 検索   | 検索語が空                   | 検索を実行せず入力を促す             |
+| `SEARCH_FAILED`         | 検索   | 検索処理に失敗               | インデックスを破棄せず再構築を案内   |
 
 エラー表示には本文、完全URL、検索語を含めない。開発用の詳細情報を追加する場合も、絶対パスや入力本文を記録しない。
 
@@ -238,7 +245,7 @@ sequenceDiagram
 - 利用者がMarkdownフォルダを選択できる。
 - Markdownファイルを`SourceDocument`へ正規化できる。
 - SourceDocumentの`body`をMemoryChunkへ非同期分割し、SHA-256の`contentHash`を設定できる。
-- `SourceDocument`の`schemaVersion`を設定できる。
+- `sourceHash`と`contentHash`をHasher AdapterでSHA-256算出できる。
 - 日本語3-gramを含むメモリ上の全文検索で結果を返せる。
 - 2文字以下の検索語にもフォールバック方式で結果を返せる。
 - リロード時に入力データから検索インデックスを再構築できる。
