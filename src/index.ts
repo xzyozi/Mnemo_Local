@@ -65,7 +65,10 @@ const bootstrap = (): void => {
             status.textContent = `${entries.length}チャンクを読み込みました。` +
                 `ファイル読込失敗: ${readFailures}件、除外: ${excluded.length}件。${excludedSummary}`;
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') return;
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                status.textContent = 'フォルダ選択をキャンセルしました。';
+                return;
+            }
             status.textContent = 'フォルダを読み込めませんでした。既存の検索結果を保持しています。';
         } finally {
             loading = false;
