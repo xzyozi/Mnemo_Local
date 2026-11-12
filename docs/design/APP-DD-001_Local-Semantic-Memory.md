@@ -120,7 +120,7 @@ normalize(raw: RawFile, hasher: Hasher): Promise<Result<SourceDocument, Normaliz
 - `sourceId`は`markdown:`と正規化相対パスを連結して安定生成する。
 - Phase 1ではMarkdown以外の`sourceType`を受け付けない。
 - `..`による親ディレクトリ参照、Windowsドライブ指定、UNCパスなどの絶対パスは`PATH_INVALID`として拒否する。
-- `sourceHash`はHasher Adapterへ入力し、SHA-256を非同期で算出する。
+- `sourceHash`は、正規化相対パスと入力本文をLFで連結した値のSHA-256とする。ファイル移動を変更として扱うため、パスを含める。
 - 空タイトルはファイル名から補完し、本文が空の場合は`DOCUMENT_EMPTY`として検索対象外にする。
 - Phase 2で履歴・ブックマークを追加する際に、URLスキーム除外とレコード単位のエラーを定義する。
 

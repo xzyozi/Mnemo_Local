@@ -84,17 +84,17 @@ erDiagram
 
 ### 3.1 SourceDocument
 
-| フィールド            | 型     | 必須  | 制約                                                                            |
-| :-------------------- | :----- | :---: | :------------------------------------------------------------------------------ |
-| `sourceId`            | string | 必須  | `markdown:`と正規化相対パスから生成する安定識別子。重複不可                     |
-| `sourceType`          | enum   | 必須  | `markdown`、`history`、`bookmark`のいずれか                                     |
-| `sourceLocator`       | string | 必須  | Markdownの相対パスまたは履歴・ブックマークのURL                                 |
-| `title`               | string | 必須  | 空文字不可。表示用タイトル                                                      |
-| `body`                | string | 必須  | 入力元の本文。Chunkerがこの本文を検索用チャンクへ分割する                       |
-| `sourceTimestamp`     | number | 必須  | Unix epoch milliseconds。負数不可                                               |
-| `sourceTimestampKind` | enum   | 必須  | `updated`（Markdown更新）、`visited`（履歴閲覧）、`created`（ブックマーク登録） |
-| `sourceHash`          | string | 必須  | 入力元全体のSHA-256。再読込判定に使用                                           |
-| `schemaVersion`       | string | 必須  | 保存スキーマのバージョン。初版は`1`                                             |
+| フィールド            | 型     | 必須  | 制約                                                                               |
+| :-------------------- | :----- | :---: | :--------------------------------------------------------------------------------- |
+| `sourceId`            | string | 必須  | `markdown:`と正規化相対パスから生成する安定識別子。重複不可                        |
+| `sourceType`          | enum   | 必須  | `markdown`、`history`、`bookmark`のいずれか                                        |
+| `sourceLocator`       | string | 必須  | Markdownの相対パスまたは履歴・ブックマークのURL                                    |
+| `title`               | string | 必須  | 空文字不可。表示用タイトル                                                         |
+| `body`                | string | 必須  | 入力元の本文。Chunkerがこの本文を検索用チャンクへ分割する                          |
+| `sourceTimestamp`     | number | 必須  | Unix epoch milliseconds。負数不可                                                  |
+| `sourceTimestampKind` | enum   | 必須  | `updated`（Markdown更新）、`visited`（履歴閲覧）、`created`（ブックマーク登録）    |
+| `sourceHash`          | string | 必須  | `sourceLocator`、改行、本文を連結した値のSHA-256。ファイル移動も変更として検出する |
+| `schemaVersion`       | string | 必須  | 保存スキーマのバージョン。初版は`1`                                                |
 
 履歴は同一URLへの複数訪問を別の`SourceDocument`として保持できる。月次集計では`sourceTimestampKind=visited`を閲覧イベントとして扱い、Markdownの更新日時と混同しない。
 

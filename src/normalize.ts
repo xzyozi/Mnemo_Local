@@ -2,7 +2,12 @@ import type { RawFile, Result, SourceDocument, NormalizeError } from './domain.j
 import type { Hasher } from './hasher.js';
 
 const isInvalidPath = (path: string): boolean =>
-  path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\') || path.split(/[\\/]/).includes('..');
+  path.length === 0 ||
+  path === '.' ||
+  path.startsWith('/') ||
+  /^[A-Za-z]:/.test(path) ||
+  path.startsWith('\\\\') ||
+  path.split(/[\\/]/).some((segment) => segment === '..' || segment === '.' || /[\u0000-\u001f]/.test(segment));
 
 export const normalize = async (
   raw: RawFile,
@@ -18,7 +23,7 @@ export const normalize = async (
       sourceId: `markdown:${sourceLocator}`,
       sourceType: 'markdown',
       sourceLocator,
-      title: raw.title || sourceLocator.split('/').at(-1) || 'Untitled',
+      title: raw.title.trim() || sourceLocator.split('/').at(-1) || 'Untitled',
       body: raw.body,
       sourceTimestamp: raw.updatedAt,
       sourceTimestampKind: 'updated',
