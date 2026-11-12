@@ -51,8 +51,8 @@ Local Semantic Memoryは、利用者が選択したローカルMarkdownフォル
 ```mermaid
 flowchart TD
     User[利用者]
-    Input[入力アダプター<br/>Markdownフォルダ / 履歴 / ブックマーク]
-    Normalize[正規化モジュール<br/>形式検証・URL除外]
+    Input[入力アダプター<br/>Markdownフォルダ]
+    Normalize[正規化モジュール<br/>パス検証・本文正規化]
     Chunker[Chunker<br/>Phase 1: メインスレッド]
     Worker[Web Worker<br/>Phase 2: Embedding]
     Index[インデックスモジュール<br/>全文検索・意味検索]
@@ -98,9 +98,9 @@ flowchart TD
 
 ## 3. 処理フロー
 
-1. 利用者がMarkdownフォルダまたは履歴・ブックマークファイルを選択する。
+1. 利用者がMarkdownフォルダを選択する。
 2. Input Adapterがファイルを読み、Normalizerが入力形式を検証する。
-3. NormalizerがノイズURL、空データ、不正レコードを除外する。
+3. Normalizerが親参照・絶対パス、空データを除外する。URLスキームや履歴・ブックマークのノイズ除外はPhase 2で扱う。
 4. ChunkerがSourceDocumentを見出し単位・約500文字を目安にMemoryChunkへ分割する。
 5. Phase 1ではMemoryChunkをメモリ上のn-gram全文検索インデックスへ登録する。IndexedDBには保存せず、リロード時に再構築する。
 6. Phase 2ではWorkerがEmbeddingを生成し、Memory StoreへDocument・Chunk・Embeddingを保存する。
