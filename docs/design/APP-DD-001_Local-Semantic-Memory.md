@@ -5,7 +5,7 @@ document_number: "APP-DD-001"
 document_role: "normative"
 ssot_scope: "module_behavior"
 status: "draft"
-version: "0.2"
+version: "0.3"
 created_at: "2026-11-12"
 updated_at: "2026-11-12"
 author: "xzyozi"
@@ -26,7 +26,7 @@ related_documents:
 
 ### 1.1 対象機能
 
-- Markdownフォルダ・ファイルの読み込み（Phase 1はフォルダ選択に限定。単一ファイルのドラッグ＆ドロップはPhase 2以降）
+- Markdownフォルダの読み込み（フォルダ内の`.md`ファイルを対象とする。単一ファイルのドラッグ＆ドロップはPhase 2以降）
 - 日本語3-gram全文検索
 - 検索結果の整形
 - 入力、正規化、検索で発生するエラーを分類する。
@@ -235,7 +235,8 @@ sequenceDiagram
 | `SEARCH_FAILED`         | 検索   | 検索処理に失敗               | インデックスを破棄せず再構築を案内       |
 
 - `path`は選択ルートからの相対パスのみを保持し、ドライブ名、UNCパス、ユーザー名、絶対パスを含めない。
-- `message`は固定された安全な説明文とし、入力本文、完全パス、URL、認証情報を含めない。
+- `message`は固定された安全な説明文とし、入力本文、完全パス、URL、検索語、認証情報を含めない。
+- エラー表示にも入力本文、完全パス、URL、検索語、認証情報を含めない。
 
 ## 5. 非機能目標（初期値）
 
