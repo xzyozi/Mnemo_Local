@@ -78,7 +78,7 @@ flowchart TD
 | ID    | モジュール       | 主な責務                                                                                      | 外部Seam / Adapter                           |
 | :---- | :--------------- | :-------------------------------------------------------------------------------------------- | :------------------------------------------- |
 | M-001 | Input Adapter    | File System Access APIまたはドロップデータを統一入力へ変換する                                | `FileSystemInputAdapter`、`DropInputAdapter` |
-| M-002 | Normalizer       | 入力形式検証、URL除外、タイトル・日時の標準化を行う                                           | `SchemaValidator`                            |
+| M-002 | Normalizer       | Phase 1ではMarkdownのパス検証、本文・タイトル・日時の正規化を行う。URL除外はPhase 2で扱う     | `SchemaValidator`、`PathValidator`           |
 | M-003 | Chunker          | Phase 1のメインスレッドでSourceDocumentの本文をチャンクへ分割する                             | 純粋な分割処理とハッシュAdapterを分離        |
 | M-004 | Embedding Worker | UIを止めずにEmbeddingを生成する                                                               | `WorkerAdapter`、テスト用同期Adapter         |
 | M-005 | Search Index     | Phase 1では日本語n-gramによる全文検索、Phase 2ではキーワード順位とベクトル順位をRRFで統合する | `SearchIndexAdapter`、`VectorSearchAdapter`  |
