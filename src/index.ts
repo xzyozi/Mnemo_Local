@@ -5,7 +5,7 @@ import { webCryptoHasher } from "./hasher.js";
 import { readInputFiles, readMarkdownDirectory } from "./input-reader.js";
 import { normalize } from "./normalize.js";
 import { SearchIndex } from "./search.js";
-import { type MemoryStore, IndexedDbStore, InMemoryStore, syncRawFilesToStore } from "./store.js";
+import { InMemoryStore, IndexedDbStore, type MemoryStore, syncRawFilesToStore } from "./store.js";
 
 export * from "./chunk.js";
 export * from "./domain.js";
@@ -102,9 +102,7 @@ const bootstrap = async (): Promise<void> => {
     index = nextIndex;
 
     const failureDetails =
-      readFailures.length > 0
-        ? ` 読込失敗詳細: ${readFailures.map((f) => f.path).join("、")}`
-        : "";
+      readFailures.length > 0 ? ` 読込失敗詳細: ${readFailures.map((f) => f.path).join("、")}` : "";
     const excludedSummary = excluded.length > 0 ? ` 除外内訳: ${excluded.join("、")}` : "";
 
     status.textContent =

@@ -102,7 +102,7 @@ const parseJsonExport = (
       const url = String(rec.url ?? rec.path ?? rec.link ?? "").trim();
       if (!url) continue;
       const title = String(rec.title ?? rec.name ?? "").trim();
-      const body = String(rec.body ?? rec.text ?? rec.snippet ?? title || url).trim();
+      const body = String(rec.body ?? rec.text ?? rec.snippet ?? (title || url)).trim();
       const rawTime = rec.time ?? rec.lastVisitTime ?? rec.updatedAt ?? rec.dateAdded;
       let updatedAt = fallbackUpdatedAt;
       if (typeof rawTime === "number" && Number.isFinite(rawTime) && rawTime > 0) {
@@ -218,7 +218,11 @@ export const readInputFiles = async (files: Iterable<File>): Promise<RawFileBatc
           sourceType: "markdown",
           sourceTimestampKind: "updated",
         });
-      } else if (lowerName.endsWith(".json") || lowerName.endsWith(".html") || lowerName.endsWith(".htm")) {
+      } else if (
+        lowerName.endsWith(".json") ||
+        lowerName.endsWith(".html") ||
+        lowerName.endsWith(".htm")
+      ) {
         const parsed = parseStructuredExport(file.name, text, file.lastModified || Date.now());
         if (parsed.ok) {
           rawFiles.push(...parsed.value);

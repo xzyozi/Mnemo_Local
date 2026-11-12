@@ -133,10 +133,7 @@ export class SearchIndex {
         }
 
         // 3. Combine scores
-        const candidateIds = new Set([
-          ...keywordRankMap.keys(),
-          ...vectorRankMap.keys(),
-        ]);
+        const candidateIds = new Set([...keywordRankMap.keys(), ...vectorRankMap.keys()]);
         const entryMap = new Map(filtered.map((e) => [e.chunk.chunkId, e]));
 
         const combined: SearchResult[] = [];
