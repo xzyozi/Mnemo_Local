@@ -1,0 +1,86 @@
+name: TypeScript CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "biome.json"
+      - ".github/workflows/ci-typescript.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "biome.json"
+      - ".github/workflows/ci-typescript.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check package.json presence
+        id: package
+        shell: bash
+        run: |
+          if [ -f package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No root package.json found; TypeScript checks are skipped."
+          fi
+
+      - name: Set up Node.js
+        if: steps.package.outputs.present == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Require npm lockfile
+        if: steps.package.outputs.present == 'true'
+        shell: bash
+        run: |
+          if [ ! -f package-lock.json ]; then
+            echo "package-lock.json is required when package.json is present." >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        if: steps.package.outputs.present == 'true'
+        run: npm ci
+
+      - name: Run lint
+        if: steps.package.outputs.present == 'true'
+        run: npm run lint --if-present
+
+      - name: Run typecheck
+        if: steps.package.outputs.present == 'true'
+        run: npm run typecheck --if-present
+
+      - name: Run tests
+        if: steps.package.outputs.present == 'true'
+        run: npm test --if-present
+
+      - name: Build
+        if: steps.package.outputs.present == 'true'
+        run: npm run build --if-present

@@ -86,7 +86,7 @@ npm install
 
 ## 5. 運用方針
 
-本リポジトリではCI/CDを前提にしない。品質確認は、開発環境で次のコマンドを必要に応じて実行する。
+本リポジトリには汎用TypeScript CIを配置している。ルートに`package.json`がある場合、GitHub Actionsがnpm lockfileを要求し、次の品質確認を自動実行する。ルートに`package.json`がないテンプレート段階では検査をスキップする。ローカルでも次のコマンドを必要に応じて実行する。
 
 - `npm run lint`
 - `npm run typecheck`
