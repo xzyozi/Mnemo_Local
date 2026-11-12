@@ -117,3 +117,65 @@ search(query: string, options?: SearchOptions): SearchResult[]
 - 結果はスコア降順、同点時は`sourceTimestamp`降順、さらに`chunkId`昇順で安定ソートする。
 - 空検索語は検索せず、利用者へ入力を促す。
 - 初期のメモリ上限は50,000チャンクとし、超過時は`INDEX_SIZE_LIMIT`を返す。
+
+### 2.5 SearchResult
+
+| フィールド        | 型     | 必須  | 内容                            |
+| :---------------- | :----- | :---: | :------------------------------ |
+| `chunkId`         | string | 必須  | MemoryChunkの識別子             |
+| `sourceId`        | string | 必須  | SourceDocumentの識別子          |
+| `title`           | string | 必須  | 表示用タイトル                  |
+| `snippet`         | string | 必須  | 一致箇所を含む本文抜粋          |
+| `sourceLocator`   | string | 必須  | 表示用の相対パスまたはURL       |
+| `sourceTimestamp` | number | 必須  | 元データの時刻                  |
+| `score`           | number | 必須  | 3-gram一致に基づくPhase 1スコア |
+
+## 3. 制御フロー
+
+```mermaid
+sequenceDiagram
+    actor User as 利用者
+    participant Reader as InputReader
+    participant Normalizer
+    participant Chunker
+    participant Index as SearchIndex
+    participant UI as 検索UI
+
+    User->>Reader: フォルダまたはファイルを選択
+    Reader-->>Normalizer: RawInput
+    Normalizer-->>Chunker: SourceDocument
+    Chunker-->>Index: MemoryChunk[]
+    User->>UI: 検索語を入力
+    UI->>Index: search(query)
+    Index-->>UI: SearchResult[]
+    UI-->>User: 結果を表示
+```
+
+### 3.1 初期化
+
+1. UIがInputReaderへ読み込みを依頼する。
+2. 入力ごとにNormalizerを実行する。
+3. 正常なSourceDocumentをChunkerへ渡す。
+4. MemoryChunkをSearchIndexへ登録する。
+5. 除外件数とエラー分類をUIへ通知する。
+
+### 3.2 再読み込み
+
+- Phase 1では永続化データを使用しない。
+- リロード後はSearchIndexを空で初期化する。
+- 利用者が再度入力を選択した時点で、初期化フローを最初から実行する。
+- 既存画面に古い検索結果を残さない。
+
+## 4. エラー分類
+
+| コード                 | 種別   | 発生条件               | UIの扱い                         |
+| :--------------------- | :----- | :--------------------- | :------------------------------- |
+| `INPUT_READ_FAILED`    | 入力   | ファイル読み取りに失敗 | 対象ファイル名と再試行を表示     |
+| `INPUT_FORMAT_INVALID` | 入力   | JSON等の形式が不正     | 対象レコードを除外し件数を表示   |
+| `INPUT_RECORD_INVALID` | 入力   | 必須フィールド不足     | 対象レコードを除外し警告表示     |
+| `CHUNK_EMPTY`          | 正規化 | 本文が空               | 対象Documentを検索対象外にする   |
+| `INDEX_SIZE_LIMIT`     | 検索   | 50,000チャンク超過     | 絞り込み条件を要求する           |
+| `QUERY_EMPTY`          | 検索   | 検索語が空             | 検索を実行せず入力を促す         |
+| `SEARCH_FAILED`        | 検索   | インデックス処理に失敗 | 再構築を案内しデータを破棄しない |
+
+エラー表示には本文、完全URL、検索語を含めない。開発用の詳細情報を追加する場合も、絶対パスや入力本文を記録しない。
