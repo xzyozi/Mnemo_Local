@@ -61,10 +61,11 @@ const bootstrap = (): void => {
             }
             index = nextIndex;
             const readFailures = readResult.value.failures.length;
-            const excludedSummary = excluded.length > 0 ? ` 除外内訳: ${excluded.join(', ')}` : '';
+            const excludedSummary = excluded.length > 0 ? ` 除外内訳: ${excluded.join('、')}` : '';
             status.textContent = `${entries.length}チャンクを読み込みました。` +
-                `ファイル読込失敗: ${readFailures}件、除外: ${excluded.length}件.${excludedSummary}`;
-        } catch {
+                `ファイル読込失敗: ${readFailures}件、除外: ${excluded.length}件。${excludedSummary}`;
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
             status.textContent = 'フォルダを読み込めませんでした。既存の検索結果を保持しています。';
         } finally {
             loading = false;
