@@ -41,6 +41,7 @@ erDiagram
         string source_type
         string source_locator
         string title
+        string body
         number source_timestamp
         string source_timestamp_kind
         string source_hash
@@ -89,6 +90,7 @@ erDiagram
 | `sourceType`          | enum   | 必須  | `markdown`、`history`、`bookmark`のいずれか                                              |
 | `sourceLocator`       | string | 必須  | Markdownの相対パスまたは履歴・ブックマークのURL                                          |
 | `title`               | string | 必須  | 空文字不可。表示用タイトル                                                               |
+| `body`                | string | 必須  | 入力元の本文。Chunkerがこの本文を検索用チャンクへ分割する                                |
 | `sourceTimestamp`     | number | 必須  | Unix epoch milliseconds。負数不可                                                        |
 | `sourceTimestampKind` | enum   | 必須  | `updated`（Markdown更新）、`visited`（履歴閲覧）、`created`（ブックマーク登録）          |
 | `sourceHash`          | string | 必須  | 入力元全体のSHA-256。再読込判定に使用                                                    |
@@ -123,7 +125,7 @@ multilingual-e5系を採用する場合、EmbeddingProviderが文書入力へ`pa
 ### 3.4 Topic / TopicAssignment
 
 - `Topic.topicId`はクラスタリング実行ごとに安定性を保証しない。アルゴリズムまたは入力範囲が変わる場合は、`algorithmVersion`を更新する。
-- `TopicAssignment.score`は所属度または距離から算出した評価値で、算出方法は詳細設計書（DD）で定義する。
+- `TopicAssignment.score`は所属度または距離から算出した評価値で、算出方法は後続の詳細設計書（DD）で定義する。
 - 期間は`TopicAssignment`へ重複保存しない。月次期間は、対象Chunkが参照するSourceDocumentの`sourceTimestamp`と`sourceTimestampKind`から集計時に導出する。
 
 ## 4. IndexedDB構成（Phase 2以降）
