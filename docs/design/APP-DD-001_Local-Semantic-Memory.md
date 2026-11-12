@@ -26,7 +26,7 @@ related_documents:
 
 ### 1.1 対象機能
 
-- Markdownフォルダ・ファイルの読み込み
+- Markdownフォルダ・ファイルの読み込み（Phase 1はフォルダ選択に限定。単一ファイルのドラッグ＆ドロップはPhase 2以降）
 - 日本語3-gram全文検索
 - 検索結果の整形
 - 入力、正規化、検索で発生するエラーを分類する。
@@ -97,7 +97,6 @@ Hasher = { digest(value: string): Promise<string> }
 
 ```text
 readMarkdownDirectory(): Promise<InputReadResult>
-readDroppedFile(file: File): Promise<Result<RawFile, FileReadError>>
 ```
 
 **契約**:
@@ -105,7 +104,7 @@ readDroppedFile(file: File): Promise<Result<RawFile, FileReadError>>
 - 利用者の明示操作なしにファイルを読み取らない。
 - `.md`以外のMarkdownフォルダ内ファイルは初期対象外とする。
 - ディレクトリ列挙に失敗した場合は`DIRECTORY_READ_FAILED`を含む失敗結果を返し、処理を終了する。
-- 個別ファイルの読み取りに失敗した場合は`FileReadError`（`path`と安全な`message`を含む）を`failures`へ追加し、他ファイルの処理は継続する。
+- 個別ファイルの読み取りに失敗した場合は`FileReadError`（選択ルートからの相対`path`と安全な`message`を含む）を`failures`へ追加し、他ファイルの処理は継続する。
 - UIは成功件数、失敗件数、失敗ファイル名を表示する。
 
 ### 2.2 Normalizer
@@ -209,7 +208,7 @@ sequenceDiagram
 ### 3.1 初期化
 
 1. UIがInputReaderへMarkdown読み込みを依頼する。
-2. InputReaderが`RawFileBatch`を返し、Normalizerが各`RawFile`のパス検証、SourceDocument生成、Hasherによる`sourceHash`算出を行う。
+2. InputReaderが`RawFileBatch`を返し、Normalizerが各`RawFile`のパス検証、SourceDocument生成、Hasherによる`sourceHash`算出を行う。Normalizerが1ファイルで失敗しても、その結果を集計して残りのファイル処理を継続する。
 3. 正常なSourceDocumentをChunkerへ渡す。
 4. ChunkerがSourceDocumentとHasherを受け取り、MemoryChunkを生成する。
 5. SearchIndexへSourceDocumentとMemoryChunkを組み合わせたSearchEntryを登録する。
@@ -235,7 +234,8 @@ sequenceDiagram
 | `QUERY_EMPTY`           | 検索   | 検索語が空                   | 検索を実行せず入力を促す                 |
 | `SEARCH_FAILED`         | 検索   | 検索処理に失敗               | インデックスを破棄せず再構築を案内       |
 
-エラー表示には本文、完全URL、検索語を含めない。開発用の詳細情報を追加する場合も、絶対パスや入力本文を記録しない。
+- `path`は選択ルートからの相対パスのみを保持し、ドライブ名、UNCパス、ユーザー名、絶対パスを含めない。
+- `message`は固定された安全な説明文とし、入力本文、完全パス、URL、認証情報を含めない。
 
 ## 5. 非機能目標（初期値）
 
@@ -251,6 +251,7 @@ sequenceDiagram
 - 利用者がMarkdownフォルダを選択できる。
 - Markdownファイルを`SourceDocument`へ正規化できる。
 - SourceDocumentの`body`をMemoryChunkへ非同期分割し、SHA-256の`contentHash`を設定できる。
+- `SourceDocument`の`schemaVersion`へ初版値`"1"`を設定できる。
 - `sourceHash`と`contentHash`をHasher AdapterでSHA-256算出できる。
 - 日本語3-gramを含むメモリ上の全文検索で結果を返せる。
 - 2文字以下の検索語にもフォールバック方式で結果を返せる。
