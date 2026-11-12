@@ -21,12 +21,17 @@ const bootstrap = (): void => {
     if (!chooseButton || !searchInput || !searchButton || !status || !results) return;
 
     let index = new SearchIndex();
+    let loading = false;
     chooseButton.addEventListener('click', async () => {
-        if (!('showDirectoryPicker' in window)) {
-            status.textContent = 'File System Access APIに対応したChromium系ブラウザが必要です。';
-            return;
-        }
+        if (loading) return;
+        loading = true;
+        chooseButton.disabled = true;
+        status.textContent = '読み込み中です。';
         try {
+            if (!('showDirectoryPicker' in window)) {
+                status.textContent = 'File System Access APIに対応したChromium系ブラウザが必要です。';
+                return;
+            }
             const directory = await (window as Window & {
                 showDirectoryPicker: () => Promise<FileSystemDirectoryHandle>;
             }).showDirectoryPicker();
@@ -40,7 +45,7 @@ const bootstrap = (): void => {
             for (const file of readResult.value.files) {
                 const normalized = await normalize(file, webCryptoHasher);
                 if (!normalized.ok) {
-                    excluded.push(`${file.path}: ${normalized.error}`);
+                    excluded.push(`${normalized.error}: ${file.path}`);
                     continue;
                 }
                 const chunks = await chunk(normalized.value, webCryptoHasher);
@@ -49,14 +54,21 @@ const bootstrap = (): void => {
             const nextIndex = new SearchIndex();
             const added = nextIndex.add(entries);
             if (!added.ok) {
-                status.textContent = '登録対象を減らして、もう一度フォルダを選択してください。';
+                status.textContent = added.error === 'INDEX_SIZE_LIMIT'
+                    ? '登録対象を減らして、もう一度フォルダを選択してください。'
+                    : '検索インデックスを更新できませんでした。既存の検索結果を保持しています。';
                 return;
             }
             index = nextIndex;
+            const readFailures = readResult.value.failures.length;
+            const excludedSummary = excluded.length > 0 ? ` 除外内訳: ${excluded.join(', ')}` : '';
             status.textContent = `${entries.length}チャンクを読み込みました。` +
-                `ファイル読込失敗: ${readResult.value.failures.length}件、除外: ${excluded.length}件`;
+                `ファイル読込失敗: ${readFailures}件、除外: ${excluded.length}件.${excludedSummary}`;
         } catch {
-            status.textContent = 'フォルダを読み込めませんでした。';
+            status.textContent = 'フォルダを読み込めませんでした。既存の検索結果を保持しています。';
+        } finally {
+            loading = false;
+            chooseButton.disabled = false;
         }
     });
 

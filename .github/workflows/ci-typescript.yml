@@ -81,3 +81,12 @@ jobs:
       - name: Build
         if: steps.package.outputs.present == 'true'
         run: npm run build --if-present
+
+      - name: Upload build artifact
+        if: steps.package.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnemo-local-dist
+          path: dist/
+          if-no-files-found: error
+

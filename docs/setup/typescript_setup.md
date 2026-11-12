@@ -95,7 +95,7 @@ npm install
 
 ## TypeScript実装の手動確認
 
-ローカルにNode.jsがない環境では、実装ブランチをGitHubへpushし、GitHub Actionsで`npm install`、Lint、型検査、テスト、ビルドを実行する。Actionsで生成された`dist/`を含む成果物を取得した後、Node.jsがある確認環境でリポジトリルートをHTTP配信する。
+ローカルにNode.jsがない環境では、実装ブランチをGitHubへpushし、GitHub Actionsで`npm install`、Lint、型検査、テスト、ビルドを実行する。Actionsの`mnemo-local-dist` Artifactを取得し、リポジトリルートへ展開して確認する。
 
 ```powershell
 python -m http.server 8000
