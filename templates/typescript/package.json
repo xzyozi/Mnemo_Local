@@ -1,0 +1,19 @@
+{
+  "name": "my-typescript-project",
+  "version": "0.1.0",
+  "description": "TypeScript project based on DEFAULT_PROJECT template",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
