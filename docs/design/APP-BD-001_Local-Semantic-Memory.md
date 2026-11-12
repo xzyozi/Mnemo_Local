@@ -5,7 +5,7 @@ document_number: "APP-BD-001"
 document_role: "normative"
 ssot_scope: "system_architecture"
 status: "draft"
-version: "0.2"
+version: "0.3"
 created_at: "2026-11-12"
 updated_at: "2026-11-12"
 author: "xzyozi"
@@ -51,8 +51,8 @@ Local Semantic Memoryは、利用者が選択したローカルMarkdownフォル
 ```mermaid
 flowchart TD
     User[利用者]
-    Input[入力アダプター<br/>Markdownフォルダ / 履歴 / ブックマーク]
-    Normalize[正規化モジュール<br/>形式検証・URL除外]
+    Input[入力アダプター<br/>Markdownフォルダ]
+    Normalize[正規化モジュール<br/>パス検証・本文正規化]
     Chunker[Chunker<br/>Phase 1: メインスレッド]
     Worker[Web Worker<br/>Phase 2: Embedding]
     Index[インデックスモジュール<br/>全文検索・意味検索]
@@ -75,16 +75,16 @@ flowchart TD
 
 ### 2.1 モジュール責務
 
-| ID    | モジュール       | 主な責務                                                                                      | 外部Seam / Adapter                           |
-| :---- | :--------------- | :-------------------------------------------------------------------------------------------- | :------------------------------------------- |
-| M-001 | Input Adapter    | File System Access APIまたはドロップデータを統一入力へ変換する                                | `FileSystemInputAdapter`、`DropInputAdapter` |
-| M-002 | Normalizer       | 入力形式検証、URL除外、タイトル・日時の標準化を行う                                           | `SchemaValidator`                            |
-| M-003 | Chunker          | Markdown見出しと文字数上限に基づきチャンクを作る                                              | 純粋関数として分離                           |
-| M-004 | Embedding Worker | UIを止めずにEmbeddingを生成する                                                               | `WorkerAdapter`、テスト用同期Adapter         |
-| M-005 | Search Index     | Phase 1では日本語n-gramによる全文検索、Phase 2ではキーワード順位とベクトル順位をRRFで統合する | `SearchIndexAdapter`、`VectorSearchAdapter`  |
-| M-006 | Memory Store     | IndexedDBへの保存、読込、削除、再構築を扱う                                                   | `IndexedDbAdapter`、テスト用InMemoryAdapter  |
-| M-007 | Topic Analyzer   | Embeddingをクラスタリングし月次集計を作る                                                     | `ClusterAdapter`                             |
-| M-008 | Presentation     | 検索条件、進捗、結果、グラフを表示する                                                        | DOM描画Adapter                               |
+| ID    | モジュール       | 主な責務                                                                                         | 外部Seam / Adapter                                    |
+| :---- | :--------------- | :----------------------------------------------------------------------------------------------- | :---------------------------------------------------- |
+| M-001 | Input Adapter    | Phase 1はFile System Access APIでMarkdownフォルダを読み込む。ドロップ入力はPhase 2以降で追加する | `FileSystemInputAdapter`、Phase 2の`DropInputAdapter` |
+| M-002 | Normalizer       | Phase 1ではMarkdownのパス検証、本文・タイトル・日時の正規化を行う。URL除外はPhase 2で扱う        | `SchemaValidator`、`PathValidator`                    |
+| M-003 | Chunker          | Phase 1のメインスレッドでSourceDocumentの本文をチャンクへ分割する                                | 純粋な分割処理とハッシュAdapterを分離                 |
+| M-004 | Embedding Worker | UIを止めずにEmbeddingを生成する                                                                  | `WorkerAdapter`、テスト用同期Adapter                  |
+| M-005 | Search Index     | Phase 1では日本語n-gramによる全文検索、Phase 2ではキーワード順位とベクトル順位をRRFで統合する    | `SearchIndexAdapter`、`VectorSearchAdapter`           |
+| M-006 | Memory Store     | IndexedDBへの保存、読込、削除、再構築を扱う                                                      | `IndexedDbAdapter`、テスト用InMemoryAdapter           |
+| M-007 | Topic Analyzer   | Embeddingをクラスタリングし月次集計を作る                                                        | `ClusterAdapter`                                      |
+| M-008 | Presentation     | 検索条件、進捗、結果、グラフを表示する                                                           | DOM描画Adapter                                        |
 
 ### 2.2 深いモジュールとSeam
 
@@ -98,9 +98,9 @@ flowchart TD
 
 ## 3. 処理フロー
 
-1. 利用者がMarkdownフォルダまたは履歴・ブックマークファイルを選択する。
+1. 利用者がMarkdownフォルダを選択する。
 2. Input Adapterがファイルを読み、Normalizerが入力形式を検証する。
-3. NormalizerがノイズURL、空データ、不正レコードを除外する。
+3. Normalizerが親参照・絶対パス、空データを除外する。URLスキームや履歴・ブックマークのノイズ除外はPhase 2で扱う。
 4. ChunkerがSourceDocumentを見出し単位・約500文字を目安にMemoryChunkへ分割する。
 5. Phase 1ではMemoryChunkをメモリ上のn-gram全文検索インデックスへ登録する。IndexedDBには保存せず、リロード時に再構築する。
 6. Phase 2ではWorkerがEmbeddingを生成し、Memory StoreへDocument・Chunk・Embeddingを保存する。
@@ -141,11 +141,11 @@ flowchart TD
 
 ## 6. フェーズと完了条件
 
-| フェーズ | 実装範囲                                   | 完了条件                                            |
-| :------- | :----------------------------------------- | :-------------------------------------------------- |
-| Phase 1  | フォルダ読込、正規化、チャンク化、全文検索 | `.md`を読み込み、キーワードで結果を表示できる       |
-| Phase 2  | Web Worker、Embedding、IndexedDB           | 意味検索ができ、リロード後にEmbeddingを再計算しない |
-| Phase 3  | クラスタリング、トピック命名、月次グラフ   | 数ヶ月から数年の関心変化をグラフで確認できる        |
+| フェーズ | 実装範囲                                           | 完了条件                                            |
+| :------- | :------------------------------------------------- | :-------------------------------------------------- |
+| Phase 1  | Markdownフォルダ読込、正規化、チャンク化、全文検索 | `.md`を読み込み、キーワードで結果を表示できる       |
+| Phase 2  | Web Worker、Embedding、IndexedDB                   | 意味検索ができ、リロード後にEmbeddingを再計算しない |
+| Phase 3  | クラスタリング、トピック命名、月次グラフ           | 数ヶ月から数年の関心変化をグラフで確認できる        |
 
 ## 7. 未決事項
 
