@@ -31,12 +31,12 @@ const bootstrap = (): void => {
                 showDirectoryPicker: () => Promise<FileSystemDirectoryHandle>;
             }).showDirectoryPicker();
             const batch = await readMarkdownDirectory(directory);
-            const normalized = await Promise.all(batch.files.map((file) => normalize(file, webCryptoHasher)));
             const entries: SearchEntry[] = [];
-            for (const result of normalized) {
-                if (!result.ok) continue;
-                const chunks = await chunk(result.value, webCryptoHasher);
-                entries.push(...chunks.map((item) => ({ source: result.value, chunk: item })));
+            for (const file of batch.files) {
+                const normalized = await normalize(file, webCryptoHasher);
+                if (!normalized.ok) continue;
+                const chunks = await chunk(normalized.value, webCryptoHasher);
+                entries.push(...chunks.map((item) => ({ source: normalized.value, chunk: item })));
             }
             index.clear();
             const added = index.add(entries);

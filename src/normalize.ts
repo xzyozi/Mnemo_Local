@@ -1,13 +1,19 @@
-import type { RawFile, Result, SourceDocument, NormalizeError } from './domain.js';
+import type { NormalizeError, RawFile, Result, SourceDocument } from './domain.js';
 import type { Hasher } from './hasher.js';
 
-const isInvalidPath = (path: string): boolean =>
-  path.length === 0 ||
-  path === '.' ||
-  path.startsWith('/') ||
-  /^[A-Za-z]:/.test(path) ||
-  path.startsWith('\\\\') ||
-  path.split(/[\\/]/).some((segment) => segment === '..' || segment === '.' || /[\u0000-\u001f]/.test(segment));
+const isInvalidPath = (path: string): boolean => {
+  const normalizedPath = path.replaceAll('\\', '/');
+  return (
+    normalizedPath.length === 0 ||
+    normalizedPath === '.' ||
+    normalizedPath.startsWith('/') ||
+    /^[A-Za-z]:/.test(normalizedPath) ||
+    normalizedPath.startsWith('//') ||
+    normalizedPath
+      .split('/')
+      .some((segment) => segment === '..' || segment === '.' || /[\u0000-\u001f]/.test(segment))
+  );
+};
 
 export const normalize = async (
   raw: RawFile,

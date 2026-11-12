@@ -41,17 +41,27 @@ describe('Phase 1 domain', () => {
     const chunks = await chunk(document, fakeHasher);
     const index = new SearchIndex();
     expect(index.add(chunks.map((item) => ({ source: document, chunk: item })))).toEqual({ ok: true, value: undefined });
-    expect(index.search('検索').ok).toBe(true);
-    expect(index.search('設').ok).toBe(true);
+    const threeGram = index.search('検索設計');
+    expect(threeGram.ok).toBe(true);
+    if (threeGram.ok) expect(threeGram.value).toHaveLength(1);
+    const twoGram = index.search('検索');
+    expect(twoGram.ok).toBe(true);
+    if (twoGram.ok) expect(twoGram.value).toHaveLength(1);
+    const oneCharacter = index.search('設');
+    expect(oneCharacter.ok).toBe(true);
+    if (oneCharacter.ok) expect(oneCharacter.value).toHaveLength(1);
   });
 
   it('rejects an over-sized registration atomically', async () => {
     const document = await source('本文');
     const chunks = await chunk(document, fakeHasher);
     const index = new SearchIndex();
+    const firstChunk = chunks.at(0);
+    expect(firstChunk).toBeDefined();
+    if (!firstChunk) return;
     const tooMany = Array.from({ length: 50_001 }, (_, index) => ({
       source: document,
-      chunk: { ...chunks[0]!, chunkId: `chunk-${index}` },
+      chunk: { ...firstChunk, chunkId: `chunk-${index}` },
     }));
     expect(index.add(tooMany)).toEqual({ ok: false, error: 'INDEX_SIZE_LIMIT' });
     expect(index.search('本文')).toEqual({ ok: true, value: [] });
