@@ -1,0 +1,7 @@
+[fix] Mermaid CIの差分抽出で日本語ファイル名が除外される問題を修正
+
+Problem:
+Gitの既定設定(core.quotePath=true)により、非ASCII文字を含むパスがダブルクォートで囲まれて末尾が .md" となり、collectChangedMarkdownFiles の endsWith(".md") で除外され、日本語ファイル名のMermaid図が検証されなかった。
+
+Solution:
+git diff に -c core.quotePath=false と -z を付与し、NUL区切りでパスを分割する。DEFAULT_PROJECT の 31eca01 (xzyozi/DEFAULT_PROJECT#34) と同じ修正。
