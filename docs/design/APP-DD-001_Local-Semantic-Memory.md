@@ -96,12 +96,12 @@ Hasher = { digest(value: string): Promise<string> }
 **責務**: 利用者が選択した入力を読み取り、ファイル単位の未加工データを返す。
 
 ```text
-readMarkdownDirectory(): Promise<InputReadResult>
+readMarkdownDirectory(directory: FileSystemDirectoryHandle): Promise<InputReadResult>
 ```
 
 **契約**:
 
-- 利用者の明示操作なしにファイルを読み取らない。
+- InputReaderは選択済みの`FileSystemDirectoryHandle`を受け取り、ディレクトリ列挙失敗を`DirectoryReadError`として返す。フォルダ選択UIは呼び出し側が担当する。
 - `.md`以外のMarkdownフォルダ内ファイルは初期対象外とする。
 - ディレクトリ列挙に失敗した場合は`DIRECTORY_READ_FAILED`を含む失敗結果を返し、処理を終了する。
 - 個別ファイルの読み取りに失敗した場合は`FileReadError`（選択ルートからの相対`path`と安全な`message`を含む）を`failures`へ追加し、他ファイルの処理は継続する。
@@ -120,7 +120,7 @@ normalize(raw: RawFile, hasher: Hasher): Promise<Result<SourceDocument, Normaliz
 - `sourceId`は`markdown:`と正規化相対パスを連結して安定生成する。
 - Phase 1ではMarkdown以外の`sourceType`を受け付けない。
 - `..`による親ディレクトリ参照、Windowsドライブ指定、UNCパスなどの絶対パスは`PATH_INVALID`として拒否する。
-- `sourceHash`はHasher Adapterへ入力し、SHA-256を非同期で算出する。
+- `sourceHash`は、正規化相対パスと入力本文をLFで連結した値のSHA-256とする。ファイル移動を変更として扱うため、パスを含める。
 - 空タイトルはファイル名から補完し、本文が空の場合は`DOCUMENT_EMPTY`として検索対象外にする。
 - Phase 2で履歴・ブックマークを追加する際に、URLスキーム除外とレコード単位のエラーを定義する。
 
