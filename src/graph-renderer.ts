@@ -93,7 +93,7 @@ export const generateTopicTimelineSvg = (
   }
 
   // Legend
-  let legend = '<g transform="translate(' + padding.left + ", " + (height - 35) + ')">';
+  let legend = `<g transform="translate(${padding.left}, ${height - 35})">`;
   let currentLegendX = 0;
   for (const topic of topics) {
     const color = topicColorMap.get(topic.topicId) ?? "#4f46e5";
