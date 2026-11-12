@@ -29,7 +29,7 @@ related_documents:
 - Markdownフォルダ・ファイルの読み込み
 - 日本語3-gram全文検索
 - 検索結果の整形
-- 入力・検索エラーの分類
+- 入力、正規化、検索で発生するエラーを分類する。
 
 ### 1.2 対象外
 
@@ -76,8 +76,14 @@ MemoryChunk = {
 }
 
 Result<T, E> = { ok: true, value: T } | { ok: false, error: E }
-InputReadError = "DIRECTORY_READ_FAILED" | "FILE_READ_FAILED"
-InputReadResult = Result<RawFile, InputReadError>
+RawFileBatch = {
+  files: RawFile[],
+  failures: FileReadError[]
+}
+
+DirectoryReadError = { code: "DIRECTORY_READ_FAILED", message: string }
+FileReadError = { code: "FILE_READ_FAILED", path: string, message: string }
+InputReadResult = Result<RawFileBatch, DirectoryReadError>
 NormalizeError = "PATH_INVALID" | "DOCUMENT_EMPTY"
 IndexError = "INDEX_SIZE_LIMIT" | "INDEX_BUILD_FAILED"
 SearchError = "QUERY_EMPTY" | "SEARCH_FAILED"
@@ -90,16 +96,16 @@ Hasher = { digest(value: string): Promise<string> }
 **責務**: 利用者が選択した入力を読み取り、ファイル単位の未加工データを返す。
 
 ```text
-readMarkdownDirectory(): Promise<InputReadResult[]>
-readDroppedFile(file: File): Promise<InputReadResult>
+readMarkdownDirectory(): Promise<InputReadResult>
+readDroppedFile(file: File): Promise<Result<RawFile, FileReadError>>
 ```
 
 **契約**:
 
 - 利用者の明示操作なしにファイルを読み取らない。
 - `.md`以外のMarkdownフォルダ内ファイルは初期対象外とする。
-- ディレクトリ列挙に失敗した場合は`DIRECTORY_READ_FAILED`を返し、処理を終了する。
-- 個別ファイルの読み取りに失敗した場合は`FILE_READ_FAILED`を含む失敗結果を返し、他ファイルの処理は継続する。
+- ディレクトリ列挙に失敗した場合は`DIRECTORY_READ_FAILED`を含む失敗結果を返し、処理を終了する。
+- 個別ファイルの読み取りに失敗した場合は`FileReadError`（`path`と安全な`message`を含む）を`failures`へ追加し、他ファイルの処理は継続する。
 - UIは成功件数、失敗件数、失敗ファイル名を表示する。
 
 ### 2.2 Normalizer
@@ -203,8 +209,8 @@ sequenceDiagram
 ### 3.1 初期化
 
 1. UIがInputReaderへMarkdown読み込みを依頼する。
-2. InputReaderが`RawFile`を返し、Normalizerがパス検証とSourceDocument生成を行う。
-3. Hasher Adapterが`sourceHash`を非同期算出する。
+2. InputReaderが`RawFileBatch`を返し、Normalizerが各`RawFile`のパス検証、SourceDocument生成、Hasherによる`sourceHash`算出を行う。
+3. 正常なSourceDocumentをChunkerへ渡す。
 4. ChunkerがSourceDocumentとHasherを受け取り、MemoryChunkを生成する。
 5. SearchIndexへSourceDocumentとMemoryChunkを組み合わせたSearchEntryを登録する。
 6. 除外件数とエラー分類をUIへ通知する。
@@ -218,16 +224,16 @@ sequenceDiagram
 
 ## 4. エラー分類
 
-| コード                  | 種別   | 発生条件                     | UIの扱い                             |
-| :---------------------- | :----- | :--------------------------- | :----------------------------------- |
-| `DIRECTORY_READ_FAILED` | 入力   | ディレクトリ列挙に失敗       | 読み込みを終了し再試行を表示         |
-| `FILE_READ_FAILED`      | 入力   | 個別ファイルの読み取りに失敗 | 対象ファイルを除外し他ファイルを継続 |
-| `PATH_INVALID`          | 入力   | 親参照・絶対パスなどを検出   | 対象ファイルを除外し通知する         |
-| `DOCUMENT_EMPTY`        | 正規化 | 本文が空                     | 対象Documentを検索対象外にする       |
-| `INDEX_SIZE_LIMIT`      | 検索   | 50,000チャンク超過           | 登録対象を絞って再実行する           |
-| `INDEX_BUILD_FAILED`    | 検索   | インデックス登録に失敗       | 更新前の状態を保持し再試行を案内     |
-| `QUERY_EMPTY`           | 検索   | 検索語が空                   | 検索を実行せず入力を促す             |
-| `SEARCH_FAILED`         | 検索   | 検索処理に失敗               | インデックスを破棄せず再構築を案内   |
+| コード                  | 種別   | 発生条件                     | UIの扱い                                 |
+| :---------------------- | :----- | :--------------------------- | :--------------------------------------- |
+| `DIRECTORY_READ_FAILED` | 入力   | ディレクトリ列挙に失敗       | 読み込みを終了し再試行を表示             |
+| `FILE_READ_FAILED`      | 入力   | 個別ファイルの読み取りに失敗 | 対象ファイルを除外し他ファイルを継続     |
+| `PATH_INVALID`          | 正規化 | 親参照・絶対パスなどを検出   | 対象ファイルを除外し通知する             |
+| `DOCUMENT_EMPTY`        | 正規化 | 本文が空                     | 対象Documentを検索対象外にする           |
+| `INDEX_SIZE_LIMIT`      | 検索   | 50,000チャンク超過           | フォルダまたは登録対象を絞って再実行する |
+| `INDEX_BUILD_FAILED`    | 検索   | インデックス登録に失敗       | 更新前の状態を保持し再試行を案内         |
+| `QUERY_EMPTY`           | 検索   | 検索語が空                   | 検索を実行せず入力を促す                 |
+| `SEARCH_FAILED`         | 検索   | 検索処理に失敗               | インデックスを破棄せず再構築を案内       |
 
 エラー表示には本文、完全URL、検索語を含めない。開発用の詳細情報を追加する場合も、絶対パスや入力本文を記録しない。
 
