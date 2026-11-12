@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { Hasher, RawFile } from "./domain.js";
+import type { RawFile } from "./domain.js";
 import { DeterministicEmbeddingProvider } from "./embedding.js";
+import type { Hasher } from "./hasher.js";
 import { parseStructuredExport } from "./input-reader.js";
 import { normalize } from "./normalize.js";
 import { SearchIndex } from "./search.js";

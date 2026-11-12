@@ -74,3 +74,6 @@ export type EmbeddingError = "EMBEDDING_EMPTY" | "EMBEDDING_INVALID_VECTOR" | "E
 export type StoreError = "STORE_READ_FAILED" | "STORE_WRITE_FAILED" | "STORE_CLEAR_FAILED";
 export type IndexError = "INDEX_SIZE_LIMIT" | "INDEX_BUILD_FAILED";
 export type SearchError = "QUERY_EMPTY" | "SEARCH_FAILED";
+
+export type { Hasher } from "./hasher.js";
+

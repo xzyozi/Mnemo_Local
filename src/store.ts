@@ -1,7 +1,6 @@
 import { chunk } from "./chunk.js";
 import type {
   EmbeddingCache,
-  Hasher,
   MemoryChunk,
   RawFile,
   Result,
@@ -10,6 +9,7 @@ import type {
   StoreError,
 } from "./domain.js";
 import type { EmbeddingProvider } from "./embedding.js";
+import type { Hasher } from "./hasher.js";
 import { normalize } from "./normalize.js";
 
 export interface StoredSnapshot {
