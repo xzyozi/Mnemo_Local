@@ -1,4 +1,4 @@
-export type SourceType = 'markdown';
+export type SourceType = "markdown";
 
 export interface RawFile {
   path: string;
@@ -14,9 +14,9 @@ export interface SourceDocument {
   title: string;
   body: string;
   sourceTimestamp: number;
-  sourceTimestampKind: 'updated';
+  sourceTimestampKind: "updated";
   sourceHash: string;
-  schemaVersion: '1';
+  schemaVersion: "1";
 }
 
 export interface MemoryChunk {
@@ -27,7 +27,7 @@ export interface MemoryChunk {
   contentHash: string;
   charStart: number;
   charEnd: number;
-  schemaVersion: '1';
+  schemaVersion: "1";
 }
 
 export interface SearchEntry {
@@ -53,6 +53,6 @@ export interface SearchResult {
 
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
-export type NormalizeError = 'PATH_INVALID' | 'DOCUMENT_EMPTY';
-export type IndexError = 'INDEX_SIZE_LIMIT' | 'INDEX_BUILD_FAILED';
-export type SearchError = 'QUERY_EMPTY' | 'SEARCH_FAILED';
+export type NormalizeError = "PATH_INVALID" | "DOCUMENT_EMPTY";
+export type IndexError = "INDEX_SIZE_LIMIT" | "INDEX_BUILD_FAILED";
+export type SearchError = "QUERY_EMPTY" | "SEARCH_FAILED";

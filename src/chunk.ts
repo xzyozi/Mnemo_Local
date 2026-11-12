@@ -1,5 +1,5 @@
-import type { MemoryChunk, SourceDocument } from './domain.js';
-import type { Hasher } from './hasher.js';
+import type { MemoryChunk, SourceDocument } from "./domain.js";
+import type { Hasher } from "./hasher.js";
 
 const TARGET_LENGTH = 500;
 
@@ -30,7 +30,7 @@ export const chunk = async (source: SourceDocument, hasher: Hasher): Promise<Mem
       contentHash: await hasher.digest(`${source.sourceId}\n${ordinal}\n${body}`),
       charStart,
       charEnd,
-      schemaVersion: '1',
+      schemaVersion: "1",
     });
     cursor = charEnd;
   }

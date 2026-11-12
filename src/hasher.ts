@@ -3,12 +3,12 @@ export interface Hasher {
 }
 
 const bytesToHex = (bytes: ArrayBuffer): string =>
-  [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 
 export const webCryptoHasher: Hasher = {
   async digest(value) {
     const encoded = new TextEncoder().encode(value);
-    const digest = await crypto.subtle.digest('SHA-256', encoded);
+    const digest = await crypto.subtle.digest("SHA-256", encoded);
     return bytesToHex(digest);
   },
 };
