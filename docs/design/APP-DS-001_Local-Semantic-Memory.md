@@ -138,6 +138,7 @@ multilingual-e5系を採用する場合、EmbeddingProviderが文書入力へ`pa
   - `assignments`: keyPath `assignmentId`。`chunkId`、`topicId`にインデックスを作成する。
 - **トランザクション**: SourceDocument・Chunk・Embeddingの更新は、対象入力単位で同一トランザクションとして扱う。
 - **失敗時**: トランザクション失敗時は更新前の状態を維持し、再試行または対象データだけの再構築を選択できるようにする。
+- **ベクトル検索上限**: ベクトル検索対象が50,000チャンクを超える場合は、期間・ソース・検索条件で絞り込んでからEmbeddingを読み込む。
 
 ## 5. 差分更新と互換性
 
@@ -146,8 +147,7 @@ multilingual-e5系を採用する場合、EmbeddingProviderが文書入力へ`pa
 3. 本文またはチャンク境界が変わった場合は、Chunkの`contentHash`を再計算する。
 4. 同じ`chunkId`と`contentHash`のChunkはEmbeddingを再利用できる。
 5. `modelId`が変わった場合は、現行モデルでEmbeddingを再生成する。
-6. ベクトル検索対象が50,000チャンクを超える場合は、期間・ソース・検索条件で絞り込んでからEmbeddingを読み込む。
-7. `schemaVersion`が変わる場合は、新しいObject Storeまたは明示的な移行処理を使用する。暗黙のフィールド解釈変更は禁止する。
+6. `schemaVersion`が変わる場合は、新しいObject Storeまたは明示的な移行処理を使用する。暗黙のフィールド解釈変更は禁止する。
 
 ## 6. 削除とプライバシー
 

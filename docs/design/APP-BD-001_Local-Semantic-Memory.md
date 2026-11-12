@@ -5,7 +5,7 @@ document_number: "APP-BD-001"
 document_role: "normative"
 ssot_scope: "system_architecture"
 status: "draft"
-version: "0.1"
+version: "0.2"
 created_at: "2026-11-12"
 updated_at: "2026-11-12"
 author: "xzyozi"
@@ -34,17 +34,17 @@ Local Semantic Memoryは、利用者が選択したローカルMarkdownフォル
 
 ### 1.2 技術方針（未確定部分を含む）
 
-| 領域                 | ドラフト方針                                                             | 状態     |
-| :------------------- | :----------------------------------------------------------------------- | :------- |
-| 記述言語             | TypeScriptを主言語とし、初期実行は`// @ts-check`付きJavaScriptも許容する | 採用候補 |
-| 配布                 | ビルド不要のHTML + JavaScript + CDN（esm.sh）を第一候補とする            | 未確定   |
-| 型検証               | Zod相当のスキーマ検証を入力境界に置く                                    | 未確定   |
-| Markdown             | File System Access APIで選択したフォルダから読む                         | 採用候補 |
-| バックグラウンド処理 | Web Workerにチャンク化・Embeddingを分離する                              | 採用候補 |
-| 全文検索             | Orama等のブラウザ内検索モジュールを候補とする                            | 未確定   |
-| Embedding            | Transformers.jsのmultilingual-e5-small相当を候補とする                   | 未確定   |
-| 永続化               | IndexedDBに検索データとEmbeddingキャッシュを保存する                     | 採用候補 |
-| 可視化               | ブラウザ内のグラフ描画手段を採用する                                     | 未確定   |
+| 領域                 | ドラフト方針                                                                                          | 状態     |
+| :------------------- | :---------------------------------------------------------------------------------------------------- | :------- |
+| 記述言語             | TypeScriptを主言語とし、初期実行は`// @ts-check`付きJavaScriptも許容する                              | 採用候補 |
+| 配布                 | ビルド不要のHTML + JavaScript + CDN（esm.sh）を第一候補とする                                         | 未確定   |
+| 型検証               | Zod相当のスキーマ検証を入力境界に置く                                                                 | 未確定   |
+| Markdown             | File System Access APIで選択したフォルダから読む                                                      | 採用候補 |
+| バックグラウンド処理 | Web Workerにチャンク化・Embeddingを分離する                                                           | 採用候補 |
+| 全文検索             | Phase 1は日本語3-gram、Phase 2はキーワード順位とベクトル順位をRRFで統合する検索モジュールを候補とする | 未確定   |
+| Embedding            | Transformers.jsのmultilingual-e5-small相当を候補とする                                                | 未確定   |
+| 永続化               | Phase 2以降、IndexedDBに検索データとEmbeddingキャッシュを保存する                                     | 採用候補 |
+| 可視化               | ブラウザ内のグラフ描画手段を採用する                                                                  | 未確定   |
 
 ## 2. システム構成
 
@@ -53,7 +53,8 @@ flowchart TD
     User[利用者]
     Input[入力アダプター<br/>Markdownフォルダ / 履歴 / ブックマーク]
     Normalize[正規化モジュール<br/>形式検証・URL除外]
-    Worker[Web Worker<br/>チャンク化・Embedding]
+    Chunker[Chunker<br/>Phase 1: メインスレッド]
+    Worker[Web Worker<br/>Phase 2: Embedding]
     Index[インデックスモジュール<br/>全文検索・意味検索]
     Store[(IndexedDBアダプター)]
     UI[検索・可視化UI]
@@ -61,7 +62,9 @@ flowchart TD
 
     User --> Input
     Input --> Normalize
-    Normalize --> Worker
+    Normalize --> Chunker
+    Chunker --> Index
+    Chunker --> Worker
     Worker --> Index
     Worker --> Store
     Store --> Index
@@ -111,7 +114,7 @@ flowchart TD
 ### 4.1 Phase 1の全文検索
 
 - 日本語を含む入力では、初期実装として文字n-gramを使う。既定値は3-gramとし、設定値として変更可能にする。
-- 検索対象は`title`、`body`、`pathOrUrl`の正規化済みテキストとする。
+- 検索対象は`title`、`body`、`sourceLocator`の正規化済みテキストとする。
 - Phase 1のインデックスはメモリ上だけに保持する。リロード後は入力データから再構築する。
 - Orama等の採用は、日本語n-gramを明示的に設定できることを確認してから決定する。
 
