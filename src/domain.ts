@@ -55,6 +55,7 @@ export interface SearchOptions {
   updatedBefore?: number;
   queryVector?: number[];
   rrfK?: number;
+  topicId?: string;
 }
 
 export interface SearchResult {
@@ -67,6 +68,37 @@ export interface SearchResult {
   score: number;
 }
 
+export interface Topic {
+  topicId: string;
+  label: string;
+  algorithmVersion: string;
+  createdAt: string;
+}
+
+export interface TopicAssignment {
+  assignmentId: string;
+  chunkId: string;
+  topicId: string;
+  score: number;
+}
+
+export interface MonthlyTopicCount {
+  month: string;
+  counts: Record<string, number>;
+  total: number;
+}
+
+export interface TopicAnalysisResult {
+  topics: Topic[];
+  assignments: TopicAssignment[];
+  timeline: MonthlyTopicCount[];
+}
+
+export interface TopicOptions {
+  maxClusters?: number;
+  minSimilarity?: number;
+}
+
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
 export type NormalizeError = "PATH_INVALID" | "URL_EXCLUDED" | "DOCUMENT_EMPTY";
@@ -74,5 +106,6 @@ export type EmbeddingError = "EMBEDDING_EMPTY" | "EMBEDDING_INVALID_VECTOR" | "E
 export type StoreError = "STORE_READ_FAILED" | "STORE_WRITE_FAILED" | "STORE_CLEAR_FAILED";
 export type IndexError = "INDEX_SIZE_LIMIT" | "INDEX_BUILD_FAILED";
 export type SearchError = "QUERY_EMPTY" | "SEARCH_FAILED";
+export type TopicError = "TOPIC_INSUFFICIENT_DATA" | "TOPIC_ANALYSIS_FAILED";
 
 export type { Hasher } from "./hasher.js";

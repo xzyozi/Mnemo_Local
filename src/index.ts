@@ -1,20 +1,24 @@
 import { chunk } from "./chunk.js";
-import type { RawFile, SearchEntry } from "./domain.js";
+import type { RawFile, SearchEntry, TopicAnalysisResult } from "./domain.js";
 import { DeterministicEmbeddingProvider } from "./embedding.js";
+import { renderTopicTimelineSvg } from "./graph-renderer.js";
 import { webCryptoHasher } from "./hasher.js";
 import { readInputFiles, readMarkdownDirectory } from "./input-reader.js";
 import { normalize } from "./normalize.js";
 import { SearchIndex } from "./search.js";
 import { InMemoryStore, IndexedDbStore, type MemoryStore, syncRawFilesToStore } from "./store.js";
+import { analyzeTopics } from "./topic-analyzer.js";
 
 export * from "./chunk.js";
 export * from "./domain.js";
 export * from "./embedding.js";
+export * from "./graph-renderer.js";
 export * from "./hasher.js";
 export * from "./input-reader.js";
 export * from "./normalize.js";
 export * from "./search.js";
 export * from "./store.js";
+export * from "./topic-analyzer.js";
 
 const bootstrap = async (): Promise<void> => {
   const chooseFolderButton = document.querySelector<HTMLButtonElement>("#choose-folder");
@@ -24,6 +28,10 @@ const bootstrap = async (): Promise<void> => {
   const searchButton = document.querySelector<HTMLButtonElement>("#search-button");
   const status = document.querySelector<HTMLElement>("#status");
   const results = document.querySelector<HTMLOListElement>("#results");
+  const timelineContainer = document.querySelector<HTMLElement>("#timeline-container");
+  const topicFilterStatus = document.querySelector<HTMLElement>("#topic-filter-status");
+  const selectedTopicLabel = document.querySelector<HTMLElement>("#selected-topic-label");
+  const resetTopicButton = document.querySelector<HTMLButtonElement>("#reset-topic-button");
 
   if (!chooseFolderButton || !searchInput || !searchButton || !status || !results) return;
 
@@ -32,6 +40,82 @@ const bootstrap = async (): Promise<void> => {
   const embeddingProvider = new DeterministicEmbeddingProvider();
   let index = new SearchIndex();
   let loading = false;
+  let selectedTopicId: string | null = null;
+  let latestAnalysis: TopicAnalysisResult | null = null;
+
+  const executeSearch = async (): Promise<void> => {
+    const query = searchInput.value;
+    if (!query.trim() && !selectedTopicId) {
+      status.textContent = "検索語を入力してください。";
+      return;
+    }
+
+    let queryVector: number[] | undefined;
+    if (query.trim()) {
+      const embedRes = await embeddingProvider.embedQuery(query);
+      if (embedRes.ok) {
+        queryVector = embedRes.value;
+      }
+    }
+
+    const result = index.search(query, {
+      queryVector,
+      topicId: selectedTopicId ?? undefined,
+    });
+    results.replaceChildren();
+
+    if (!result.ok) {
+      status.textContent = `検索エラー: ${result.error}`;
+      return;
+    }
+
+    for (const item of result.value) {
+      const element = document.createElement("li");
+      element.textContent = `${item.title} (${item.score.toFixed(4)}) [${item.sourceLocator}] — ${item.snippet}`;
+      results.append(element);
+    }
+
+    const filterNote = selectedTopicId
+      ? `（トピック「${latestAnalysis?.topics.find((t) => t.topicId === selectedTopicId)?.label ?? selectedTopicId}」で絞り込み中）`
+      : "";
+    status.textContent = `${result.value.length}件見つかりました。${filterNote}`;
+  };
+
+  const handleSelectTopic = (topicId: string | null): void => {
+    selectedTopicId = topicId;
+    if (topicFilterStatus && selectedTopicLabel) {
+      if (topicId) {
+        const found = latestAnalysis?.topics.find((t) => t.topicId === topicId);
+        selectedTopicLabel.textContent = `選択トピック: ${found ? found.label : topicId}`;
+        topicFilterStatus.style.display = "block";
+      } else {
+        topicFilterStatus.style.display = "none";
+      }
+    }
+    executeSearch();
+  };
+
+  const refreshTimeline = (entries: SearchEntry[]): void => {
+    if (!timelineContainer) return;
+    const analysisRes = analyzeTopics(entries);
+    if (analysisRes.ok) {
+      latestAnalysis = analysisRes.value;
+      index.setTopicAssignments(analysisRes.value.assignments);
+      const svg = renderTopicTimelineSvg(
+        analysisRes.value.timeline,
+        analysisRes.value.topics,
+        handleSelectTopic,
+      );
+      timelineContainer.replaceChildren(svg);
+    } else {
+      latestAnalysis = null;
+      timelineContainer.replaceChildren();
+    }
+  };
+
+  resetTopicButton?.addEventListener("click", () => {
+    handleSelectTopic(null);
+  });
 
   // Restore snapshot from store on startup
   try {
@@ -51,6 +135,7 @@ const bootstrap = async (): Promise<void> => {
         }
       }
       index.add(entries);
+      refreshTimeline(entries);
       status.textContent = `保存済みデータから ${entries.length} チャンクを復元しました。`;
     } else {
       status.textContent = "フォルダまたはファイルを選択してください。";
@@ -100,6 +185,7 @@ const bootstrap = async (): Promise<void> => {
     }
 
     index = nextIndex;
+    refreshTimeline(syncRes.value.entries);
 
     const failureDetails =
       readFailures.length > 0 ? ` 読込失敗詳細: ${readFailures.map((f) => f.path).join("、")}` : "";
@@ -168,6 +254,10 @@ const bootstrap = async (): Promise<void> => {
     try {
       await store.clearAll();
       index.clear();
+      latestAnalysis = null;
+      selectedTopicId = null;
+      if (topicFilterStatus) topicFilterStatus.style.display = "none";
+      timelineContainer?.replaceChildren();
       results.replaceChildren();
       status.textContent = "保存データをクリアしました。";
     } catch {
@@ -178,31 +268,7 @@ const bootstrap = async (): Promise<void> => {
   });
 
   searchButton.addEventListener("click", async () => {
-    const query = searchInput.value;
-    if (!query.trim()) {
-      status.textContent = "検索語を入力してください。";
-      return;
-    }
-
-    let queryVector: number[] | undefined;
-    const embedRes = await embeddingProvider.embedQuery(query);
-    if (embedRes.ok) {
-      queryVector = embedRes.value;
-    }
-
-    const result = index.search(query, { queryVector });
-    results.replaceChildren();
-    if (!result.ok) {
-      status.textContent = `検索エラー: ${result.error}`;
-      return;
-    }
-
-    for (const item of result.value) {
-      const element = document.createElement("li");
-      element.textContent = `${item.title} (${item.score.toFixed(4)}) [${item.sourceLocator}] — ${item.snippet}`;
-      results.append(element);
-    }
-    status.textContent = `${result.value.length}件見つかりました。`;
+    await executeSearch();
   });
 };
 

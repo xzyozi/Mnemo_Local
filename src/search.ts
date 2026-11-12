@@ -5,6 +5,7 @@ import type {
   SearchError,
   SearchOptions,
   SearchResult,
+  TopicAssignment,
 } from "./domain.js";
 
 const MAX_CHUNKS = 50_000;
@@ -53,6 +54,14 @@ export const cosineSimilarity = (a: number[], b: number[]): number => {
 
 export class SearchIndex {
   private entries: IndexedEntry[] = [];
+  private chunkTopicMap = new Map<string, string>();
+
+  setTopicAssignments(assignments: TopicAssignment[]): void {
+    this.chunkTopicMap.clear();
+    for (const item of assignments) {
+      this.chunkTopicMap.set(item.chunkId, item.topicId);
+    }
+  }
 
   add(entries: SearchEntry[]): Result<void, IndexError> {
     if (this.entries.length + entries.length > MAX_CHUNKS)
@@ -78,10 +87,14 @@ export class SearchIndex {
 
   clear(): void {
     this.entries = [];
+    this.chunkTopicMap.clear();
   }
 
   search(query: string, options: SearchOptions = {}): Result<SearchResult[], SearchError> {
-    if (!query.trim()) return { ok: false, error: "QUERY_EMPTY" };
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery && !options.topicId) {
+      return { ok: false, error: "QUERY_EMPTY" };
+    }
     try {
       const filtered = this.entries
         .filter(({ source }) => !options.sourceIds || options.sourceIds.includes(source.sourceId))
@@ -95,7 +108,30 @@ export class SearchIndex {
         .filter(
           ({ source }) =>
             options.updatedBefore === undefined || source.sourceTimestamp <= options.updatedBefore,
+        )
+        .filter(
+          ({ chunk }) =>
+            !options.topicId || this.chunkTopicMap.get(chunk.chunkId) === options.topicId,
         );
+
+      if (!trimmedQuery) {
+        const results: SearchResult[] = filtered
+          .map((entry) => ({
+            chunkId: entry.chunk.chunkId,
+            sourceId: entry.source.sourceId,
+            title: entry.source.title,
+            snippet: entry.chunk.body.slice(0, 180),
+            sourceLocator: entry.source.sourceLocator,
+            sourceTimestamp: entry.source.sourceTimestamp,
+            score: 1,
+          }))
+          .sort(
+            (left, right) =>
+              right.sourceTimestamp - left.sourceTimestamp ||
+              left.chunkId.localeCompare(right.chunkId),
+          );
+        return { ok: true, value: results };
+      }
 
       const rrfK = options.rrfK ?? DEFAULT_RRF_K;
       const queryVector = options.queryVector;
