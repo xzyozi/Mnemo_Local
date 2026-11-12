@@ -76,4 +76,3 @@ export type IndexError = "INDEX_SIZE_LIMIT" | "INDEX_BUILD_FAILED";
 export type SearchError = "QUERY_EMPTY" | "SEARCH_FAILED";
 
 export type { Hasher } from "./hasher.js";
-
