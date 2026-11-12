@@ -10,13 +10,23 @@
 <body>
   <main>
     <h1>Mnemo Local</h1>
-    <button id="choose-folder" type="button">Markdownフォルダを選択</button>
-    <label>
-      検索語
-      <input id="search-query" type="search" />
-    </label>
-    <button id="search-button" type="button">検索</button>
-    <p id="status" role="status">フォルダを選択してください。</p>
+    <section>
+      <button id="choose-folder" type="button">Markdownフォルダを選択</button>
+      <label>
+        またはファイルを選択（Markdown / 履歴・ブックマークJSON/HTML）
+        <input id="choose-files" type="file" multiple accept=".md,.json,.html,.htm" />
+      </label>
+      <button id="clear-data-button" type="button">保存データをクリア</button>
+    </section>
+    <hr />
+    <section>
+      <label>
+        検索語
+        <input id="search-query" type="search" />
+      </label>
+      <button id="search-button" type="button">検索</button>
+    </section>
+    <p id="status" role="status">初期化中...</p>
     <ol id="results"></ol>
   </main>
   <script type="module" src="./dist/index.js"></script>
