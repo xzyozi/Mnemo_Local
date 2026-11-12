@@ -22,7 +22,7 @@ related_documents:
 
 ## 1. 対象範囲
 
-本書は、Markdown入力を正規化し、検索用チャンクを生成し、メモリ上の全文検索インデックスから結果を返すモジュール契約を正本とする。履歴・ブックマーク入力、Embedding、IndexedDB、RRF統合、クラスタリングは後続の設計で定義する。
+本書は、Markdown入力を正規化し、検索用チャンクを生成し、メモリ上の全文検索インデックスから結果を返すモジュール契約を正本とする。履歴・ブックマーク入力、URLスキーム除外、Embedding、IndexedDB、RRF統合、クラスタリングは後続の設計で定義する。
 
 ### 1.1 対象機能
 
@@ -60,7 +60,8 @@ SourceDocument = {
   body: string,
   sourceTimestamp: number,
   sourceTimestampKind: "updated",
-  sourceHash: string
+  sourceHash: string,
+  schemaVersion: string
 }
 
 MemoryChunk = {
@@ -70,12 +71,16 @@ MemoryChunk = {
   body: string,
   contentHash: string,
   charStart: number,
-  charEnd: number
+  charEnd: number,
+  schemaVersion: string
 }
 
 Result<T, E> = { ok: true, value: T } | { ok: false, error: E }
-NormalizeError = "INPUT_FORMAT_INVALID" | "INPUT_RECORD_INVALID" | "DOCUMENT_EMPTY"
+NormalizeError = "PATH_INVALID" | "DOCUMENT_EMPTY" | "INPUT_READ_FAILED"
+IndexError = "INDEX_SIZE_LIMIT" | "SEARCH_FAILED"
+SearchError = "QUERY_EMPTY" | "SEARCH_FAILED"
 SearchOptions = { sourceIds?: string[], updatedAfter?: number, updatedBefore?: number }
+Hasher = { digest(value: string): Promise<string> }
 ```
 
 ### 2.1 InputReader
@@ -99,23 +104,24 @@ readDroppedFile(file: File): Promise<RawFile>
 **責務**: RawFileまたは履歴・ブックマークレコードを検証し、SourceDocumentを生成する。
 
 ```text
-normalize(raw: RawInput): Result<SourceDocument, NormalizeError>
+normalize(raw: RawFile, hasher: Hasher): Promise<Result<SourceDocument, NormalizeError>>
 ```
 
 **契約**:
 
 - `sourceId`は`markdown:`と正規化相対パスを連結して安定生成する。
 - Phase 1ではMarkdown以外の`sourceType`を受け付けない。
-- Markdownの相対パスを正規化し、`javascript:`、`data:`、`file:`などのノイズまたは危険なURLスキームを検索対象から除外する。
+- `..`による親ディレクトリ参照、Windowsドライブ指定、UNCパスなどの絶対パスは`PATH_INVALID`として拒否する。
+- `sourceHash`はHasher Adapterへ入力し、SHA-256を非同期で算出する。
 - 空タイトルはファイル名から補完し、本文が空の場合は`DOCUMENT_EMPTY`として検索対象外にする。
-- 不正レコードは全処理を中断せず、レコード単位で除外して警告へ集計する。
+- Phase 2で履歴・ブックマークを追加する際に、URLスキーム除外とレコード単位のエラーを定義する。
 
 ### 2.3 Chunker
 
 **責務**: SourceDocumentの本文を検索単位へ分割する。
 
 ```text
-chunk(source: SourceDocument): Promise<MemoryChunk[]>
+chunk(source: SourceDocument, hasher: Hasher): Promise<MemoryChunk[]>
 ```
 
 **契約**:
@@ -126,7 +132,7 @@ chunk(source: SourceDocument): Promise<MemoryChunk[]>
 - `ordinal`はSourceDocumentごとの0始まり連番とする。
 - `chunkId`は`sourceId + ordinal`から決定的に生成する。
 - 空白だけのチャンクは生成しない。
-- `contentHash`はブラウザの`crypto.subtle.digest("SHA-256", ...)`で算出するため、ChunkerはPromiseを返す。
+- `contentHash`はHasher Adapterで算出するため、Chunkerはブラウザの暗号APIを直接呼び出さない。
 - 同一入力に対して同じ順序・同じ本文を返す。
 
 ### 2.4 SearchIndex
@@ -140,16 +146,17 @@ SearchEntry = {
 }
 
 create(): SearchIndex
-add(entries: SearchEntry[]): void
+add(entries: SearchEntry[]): Result<void, IndexError>
 clear(): void
-search(query: string, options?: SearchOptions): SearchResult[]
+search(query: string, options?: SearchOptions): Result<SearchResult[], SearchError>
 ```
 
 **契約**:
 
 - Phase 1ではIndexedDBや外部サービスへアクセスしない。
 - 登録対象は`source.title`、`chunk.body`、`source.sourceLocator`を連結した検索テキストとする。
-- 日本語検索は3-gramを基本とする。検索語が2文字以下の場合は2-gramへフォールバックし、1文字の場合は正規化済みの部分一致へフォールバックする。
+- 日本語検索は3-gramと2-gramを登録時に併用する。3文字以上の検索語は3-gram、2文字は2-gram、1文字は走査による部分一致へ分岐する。
+- 2-gramインデックスは3-gramインデックスとは別に保持し、2文字検索で必ず利用できるようにする。
 - ASCII単語は小文字化し、Unicode正規化を適用する。
 - 結果はスコア降順、同点時は`sourceTimestamp`降順、さらに`chunkId`昇順で安定ソートする。
 - 空検索語は検索せず、利用者へ入力を促す。
@@ -157,15 +164,15 @@ search(query: string, options?: SearchOptions): SearchResult[]
 
 ### 2.5 SearchResult
 
-| フィールド        | 型     | 必須  | 内容                            |
-| :---------------- | :----- | :---: | :------------------------------ |
-| `chunkId`         | string | 必須  | MemoryChunkの識別子             |
-| `sourceId`        | string | 必須  | SourceDocumentの識別子          |
-| `title`           | string | 必須  | 表示用タイトル                  |
-| `snippet`         | string | 必須  | 一致箇所を含む本文抜粋          |
-| `sourceLocator`   | string | 必須  | 表示用の相対パスまたはURL       |
-| `sourceTimestamp` | number | 必須  | 元データの時刻                  |
-| `score`           | number | 必須  | 3-gram一致に基づくPhase 1スコア |
+| フィールド        | 型     | 必須  | 内容                                       |
+| :---------------- | :----- | :---: | :----------------------------------------- |
+| `chunkId`         | string | 必須  | MemoryChunkの識別子                        |
+| `sourceId`        | string | 必須  | SourceDocumentの識別子                     |
+| `title`           | string | 必須  | 表示用タイトル                             |
+| `snippet`         | string | 必須  | 一致箇所を含む本文抜粋                     |
+| `sourceLocator`   | string | 必須  | 表示用のMarkdown相対パス                   |
+| `sourceTimestamp` | number | 必須  | Markdown更新時刻                           |
+| `score`           | number | 必須  | 3-gram、2-gram、部分一致に応じた検索スコア |
 
 ## 3. 制御フロー
 
@@ -179,9 +186,9 @@ sequenceDiagram
     participant UI as 検索UI
 
     User->>Reader: フォルダまたはファイルを選択
-    Reader-->>Normalizer: RawInput
-    Normalizer-->>Chunker: SourceDocument
-    Chunker-->>Index: MemoryChunk[]
+    Reader-->>Normalizer: RawFile
+    Normalizer-->>Chunker: SourceDocument + Hasher
+    Chunker-->>Index: SearchEntry[]
     User->>UI: 検索語を入力
     UI->>Index: search(query)
     Index-->>UI: SearchResult[]
@@ -190,11 +197,12 @@ sequenceDiagram
 
 ### 3.1 初期化
 
-1. UIがInputReaderへ読み込みを依頼する。
-2. 入力ごとにNormalizerを実行する。
-3. 正常なSourceDocumentをChunkerへ渡す。
-4. MemoryChunkをSearchIndexへ登録する。
-5. 除外件数とエラー分類をUIへ通知する。
+1. UIがInputReaderへMarkdown読み込みを依頼する。
+2. InputReaderが`RawFile`を返し、Normalizerがパス検証とSourceDocument生成を行う。
+3. Hasher Adapterが`sourceHash`を非同期算出する。
+4. ChunkerがSourceDocumentとHasherを受け取り、MemoryChunkを生成する。
+5. SearchIndexへSourceDocumentとMemoryChunkを組み合わせたSearchEntryを登録する。
+6. 除外件数とエラー分類をUIへ通知する。
 
 ### 3.2 再読み込み
 
@@ -205,15 +213,14 @@ sequenceDiagram
 
 ## 4. エラー分類
 
-| コード                 | 種別   | 発生条件                         | UIの扱い                         |
-| :--------------------- | :----- | :------------------------------- | :------------------------------- |
-| `INPUT_READ_FAILED`    | 入力   | ファイル読み取りに失敗           | 対象ファイル名と再試行を表示     |
-| `DOCUMENT_EMPTY`       | 正規化 | 本文が空                         | 対象Documentを検索対象外にする   |
-| `INPUT_FORMAT_INVALID` | 入力   | Markdownファイル全体の形式が不正 | 対象ファイルを除外し通知する     |
-| `INPUT_RECORD_INVALID` | 入力   | 必須フィールド不足               | 対象レコードを除外し警告表示     |
-| `INDEX_SIZE_LIMIT`     | 検索   | 50,000チャンク超過               | 絞り込み条件を要求する           |
-| `QUERY_EMPTY`          | 検索   | 検索語が空                       | 検索を実行せず入力を促す         |
-| `SEARCH_FAILED`        | 検索   | インデックス処理に失敗           | 再構築を案内しデータを破棄しない |
+| コード              | 種別   | 発生条件                   | UIの扱い                         |
+| :------------------ | :----- | :------------------------- | :------------------------------- |
+| `INPUT_READ_FAILED` | 入力   | ファイル読み取りに失敗     | 対象ファイル名と再試行を表示     |
+| `PATH_INVALID`      | 入力   | 親参照・絶対パスなどを検出 | 対象ファイルを除外し通知する     |
+| `DOCUMENT_EMPTY`    | 正規化 | 本文が空                   | 対象Documentを検索対象外にする   |
+| `INDEX_SIZE_LIMIT`  | 検索   | 50,000チャンク超過         | 絞り込み条件を要求する           |
+| `QUERY_EMPTY`       | 検索   | 検索語が空                 | 検索を実行せず入力を促す         |
+| `SEARCH_FAILED`     | 検索   | インデックス処理に失敗     | 再構築を案内しデータを破棄しない |
 
 エラー表示には本文、完全URL、検索語を含めない。開発用の詳細情報を追加する場合も、絶対パスや入力本文を記録しない。
 
@@ -231,6 +238,7 @@ sequenceDiagram
 - 利用者がMarkdownフォルダを選択できる。
 - Markdownファイルを`SourceDocument`へ正規化できる。
 - SourceDocumentの`body`をMemoryChunkへ非同期分割し、SHA-256の`contentHash`を設定できる。
+- `SourceDocument`の`schemaVersion`を設定できる。
 - 日本語3-gramを含むメモリ上の全文検索で結果を返せる。
 - 2文字以下の検索語にもフォールバック方式で結果を返せる。
 - リロード時に入力データから検索インデックスを再構築できる。
