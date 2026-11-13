@@ -2,6 +2,7 @@ import type {
   MonthlyTopicCount,
   Result,
   SearchEntry,
+  SourceEvent,
   Topic,
   TopicAnalysisResult,
   TopicAssignment,
@@ -101,6 +102,7 @@ const formatMonth = (timestamp: number): string => {
 
 export const analyzeTopics = (
   entries: SearchEntry[],
+  events: SourceEvent[] = [],
   options: TopicOptions = {},
 ): Result<TopicAnalysisResult, TopicError> => {
   if (!entries || entries.length === 0) {
@@ -281,33 +283,44 @@ export const analyzeTopics = (
       }
     }
 
-    // Generate monthly timeline
+    // Generate monthly timeline from SourceEvent, assigning each event to its representative topic.
+    const assignmentByChunk = new Map(assignments.map((assignment) => [assignment.chunkId, assignment]));
+    const entriesBySource = new Map<string, SearchEntry[]>();
+    for (const entry of validEntries) {
+      const sourceEntries = entriesBySource.get(entry.source.sourceId) ?? [];
+      sourceEntries.push(entry);
+      entriesBySource.set(entry.source.sourceId, sourceEntries);
+    }
+    const topicBySource = new Map<string, Map<string, number>>();
+    for (const [sourceId, sourceEntries] of entriesBySource) {
+      const scores = new Map<string, number>();
+      for (const entry of sourceEntries) {
+        const assignment = assignmentByChunk.get(entry.chunk.chunkId);
+        if (assignment) scores.set(assignment.topicId, (scores.get(assignment.topicId) ?? 0) + assignment.score);
+      }
+      topicBySource.set(sourceId, scores);
+    }
+
+    const unknownTopicId = "unknown";
     const monthMap = new Map<string, Record<string, number>>();
-
-    for (const assignment of assignments) {
-      const entry = validEntries.find((e) => e.chunk.chunkId === assignment.chunkId);
-      if (!entry) continue;
-
-      const month = formatMonth(entry.source.sourceTimestamp);
+    for (const event of events) {
+      const scores = topicBySource.get(event.sourceId);
+      const representative = scores && [...scores.entries()].sort((left, right) => right[1] - left[1])[0]?.[0];
+      const topicId = representative ?? unknownTopicId;
+      const month = formatMonth(event.timestamp);
       const counts = monthMap.get(month) ?? {};
-      counts[assignment.topicId] = (counts[assignment.topicId] ?? 0) + 1;
+      counts[topicId] = (counts[topicId] ?? 0) + 1;
       monthMap.set(month, counts);
     }
 
-    const timeline: MonthlyTopicCount[] = [];
-    const sortedMonths = [...monthMap.keys()].sort();
+    if ([...monthMap.values()].some((counts) => counts[unknownTopicId])) {
+      topics.push({ topicId: unknownTopicId, label: "不明", algorithmVersion: "1.0", createdAt: new Date().toISOString() });
+    }
 
-    for (const month of sortedMonths) {
+    const timeline: MonthlyTopicCount[] = [];
+    for (const month of [...monthMap.keys()].sort()) {
       const counts = monthMap.get(month) ?? {};
-      let total = 0;
-      for (const count of Object.values(counts)) {
-        total += count;
-      }
-      timeline.push({
-        month,
-        counts,
-        total,
-      });
+      timeline.push({ month, counts, total: Object.values(counts).reduce((sum, count) => sum + count, 0) });
     }
 
     return {

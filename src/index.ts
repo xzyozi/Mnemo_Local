@@ -1,5 +1,5 @@
 import { chunk } from "./chunk.js";
-import type { RawFile, SearchEntry, TopicAnalysisResult } from "./domain.js";
+import type { RawFile, SearchEntry, SourceEvent, TopicAnalysisResult } from "./domain.js";
 import { DeterministicEmbeddingProvider } from "./embedding.js";
 import { renderTopicTimelineSvg } from "./graph-renderer.js";
 import { webCryptoHasher } from "./hasher.js";
@@ -95,9 +95,9 @@ const bootstrap = async (): Promise<void> => {
     executeSearch();
   };
 
-  const refreshTimeline = (entries: SearchEntry[]): void => {
+  const refreshTimeline = (entries: SearchEntry[], events: SourceEvent[]): void => {
     if (!timelineContainer) return;
-    const analysisRes = analyzeTopics(entries);
+    const analysisRes = analyzeTopics(entries, events);
     if (analysisRes.ok) {
       latestAnalysis = analysisRes.value;
       index.setTopicAssignments(analysisRes.value.assignments);
@@ -135,7 +135,7 @@ const bootstrap = async (): Promise<void> => {
         }
       }
       index.add(entries);
-      refreshTimeline(entries);
+      refreshTimeline(entries, loaded.value.events);
       status.textContent = `保存済みデータから ${entries.length} チャンクを復元しました。`;
     } else {
       status.textContent = "フォルダまたはファイルを選択してください。";
@@ -185,7 +185,7 @@ const bootstrap = async (): Promise<void> => {
     }
 
     index = nextIndex;
-    refreshTimeline(syncRes.value.entries);
+    refreshTimeline(syncRes.value.entries, syncRes.value.events);
 
     const failureDetails =
       readFailures.length > 0 ? ` 読込失敗詳細: ${readFailures.map((f) => f.path).join("、")}` : "";
@@ -193,7 +193,7 @@ const bootstrap = async (): Promise<void> => {
 
     status.textContent =
       `${syncRes.value.chunksCount}チャンク（再利用: ${syncRes.value.reusedChunksCount}件、新規ベクトル: ${syncRes.value.newEmbeddingsCount}件）を読み込みました。` +
-      `ファイル読込失敗: ${readFailures.length}件、除外: ${excluded.length}件。${failureDetails}${excludedSummary}`;
+      `events: ${syncRes.value.eventsCount}件、ファイル読込失敗: ${readFailures.length}件、除外: ${excluded.length}件。${failureDetails}${excludedSummary}`;
   };
 
   chooseFolderButton.addEventListener("click", async () => {
