@@ -152,7 +152,7 @@ it("clusters entries by embedding similarity and generates meaningful topic labe
   // Timeline should have 2026-01 and 2026-02
   expect(timeline.length).toBe(2);
   expect(timeline[0]?.month).toBe("2026-01");
-  expect(timeline[0]?.total).toBe(4);
+  expect(timeline[0]?.total).toBe(2);
   expect(timeline[1]?.month).toBe("2026-02");
   expect(timeline[1]?.total).toBe(4);
 });

@@ -285,11 +285,13 @@ export const syncRawFilesToStore = async (
   let newEmbeddingsCount = 0;
 
   for (const [sourceId, candidate] of rawDocuments) {
-    const latest = latestEventBySource.get(sourceId);
-    const document = latest
+    const previous = documentMap.get(sourceId);
+    const latestDocument = latest
       ? { ...candidate, sourceTimestamp: latest.timestamp, sourceTimestampKind: latest.eventType }
       : candidate;
-    const previous = documentMap.get(sourceId);
+    const document = previous && previous.sourceTimestamp > latestDocument.sourceTimestamp
+      ? previous
+      : latestDocument;
     documentsToSave.push(document);
     let chunks: MemoryChunk[];
     if (previous?.sourceHash === document.sourceHash) {

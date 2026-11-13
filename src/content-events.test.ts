@@ -37,6 +37,9 @@ describe("Issue #9 content events", () => {
     expect(normalizeUrl("https://example.com/a/?keep=1")).not.toBe(
       normalizeUrl("https://example.com/a?keep=1"),
     );
+    expect(normalizeUrl("https://example.com/a?keep=1")).not.toBe(
+      normalizeUrl("https://example.com/a?keep=2"),
+    );
     expect(() => normalizeUrl("https://example.com/a?bad=%E0%A4%A")).not.toThrow();
   });
 
@@ -146,5 +149,16 @@ describe("Issue #9 content events", () => {
     expect(second.ok).toBe(true);
     if (!second.ok) return;
     expect(second.value.documents[0]?.title).toBe("記事タイトル");
+  });
+  it("does not roll a document back when an older export is imported", async () => {
+    const store = new InMemoryStore();
+    const provider = new DeterministicEmbeddingProvider("test", 8);
+    await syncRawFilesToStore([{ ...history(2000), title: "新しいタイトル" }], store, fakeHasher, provider);
+    await syncRawFilesToStore([{ ...history(1000), title: "古いタイトル" }], store, fakeHasher, provider);
+    const snapshot = await store.loadAll();
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok) return;
+    expect(snapshot.value.documents[0]?.title).toBe("新しいタイトル");
+    expect(snapshot.value.documents[0]?.sourceTimestamp).toBe(2000);
   });
 });
