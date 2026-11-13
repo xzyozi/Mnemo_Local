@@ -5,9 +5,9 @@ document_number: "APP-BD-001"
 document_role: "normative"
 ssot_scope: "system_architecture"
 status: "draft"
-version: "0.3"
+version: "0.4"
 created_at: "2026-11-12"
-updated_at: "2026-11-12"
+updated_at: "2026-11-13"
 author: "xzyozi"
 owner: "xzyozi"
 purpose: "完全ブラウザ完結型の個人向けセマンティック検索と興味変遷グラフの全体構成・責務・制約を定義するため"
@@ -16,6 +16,7 @@ related_documents:
   - "Local Semantic Memory 要求仕様（相対パス: ../features/local-semantic-memory.md）"
   - "Local Semantic Memory データ構造仕様書（相対パス: ./APP-DS-001_Local-Semantic-Memory.md）"
   - "TypeScript環境構築手順書（相対パス: ../setup/typescript_setup.md）"
+  - "ADR-002 コンテンツとイベントの分離（相対パス: ../adr/002-content-event-separation.md）"
 ---
 
 # Local Semantic Memory 基本設計書（ドラフト）
@@ -82,8 +83,8 @@ flowchart TD
 | M-003 | Chunker          | Phase 1のメインスレッドでSourceDocumentの本文をチャンクへ分割する                                | 純粋な分割処理とハッシュAdapterを分離                 |
 | M-004 | Embedding Worker | UIを止めずにEmbeddingを生成する                                                                  | `WorkerAdapter`、テスト用同期Adapter                  |
 | M-005 | Search Index     | Phase 1では日本語n-gramによる全文検索、Phase 2ではキーワード順位とベクトル順位をRRFで統合する    | `SearchIndexAdapter`、`VectorSearchAdapter`           |
-| M-006 | Memory Store     | IndexedDBへの保存、読込、削除、再構築を扱う                                                      | `IndexedDbAdapter`、テスト用InMemoryAdapter           |
-| M-007 | Topic Analyzer   | Embeddingをクラスタリングし月次集計を作る                                                        | `ClusterAdapter`                                      |
+| M-006 | Memory Store     | IndexedDBへのコンテンツ・イベント（訪問・登録・更新の記録）の保存、読込、削除、再構築を扱う      | `IndexedDbAdapter`、テスト用InMemoryAdapter           |
+| M-007 | Topic Analyzer   | Embeddingをクラスタリングし、イベントから月次集計を作る                                          | `ClusterAdapter`                                      |
 | M-008 | Presentation     | 検索条件、進捗、結果、グラフを表示する                                                           | DOM描画Adapter                                        |
 
 ### 2.2 深いモジュールとSeam
@@ -103,10 +104,10 @@ flowchart TD
 3. Normalizerが親参照・絶対パス、空データを除外する。URLスキームや履歴・ブックマークのノイズ除外はPhase 2で扱う。
 4. ChunkerがSourceDocumentを見出し単位・約500文字を目安にMemoryChunkへ分割する。
 5. Phase 1ではMemoryChunkをメモリ上のn-gram全文検索インデックスへ登録する。IndexedDBには保存せず、リロード時に再構築する。
-6. Phase 2ではWorkerがEmbeddingを生成し、Memory StoreへDocument・Chunk・Embeddingを保存する。
+6. Phase 2ではWorkerがEmbeddingを生成し、Memory StoreへDocument・Chunk・Embedding・Eventを保存する。履歴・ブックマークは同一URLを1件のDocumentにまとめ、訪問ごとの記録はEventとして追記する（ADR-002）。
 7. Phase 2のSearch Indexはキーワード順位とベクトル順位をReciprocal Rank Fusion（RRF）で統合する。
 8. UIがキーワード検索または意味検索をSearch Indexへ依頼する。
-9. Topic Analyzerが検索対象の時系列データを月別・トピック別に集計する。
+9. Topic AnalyzerがEventを月別・トピック別に集計する。
 10. Presentationが検索結果と興味変遷グラフを表示する。
 
 ## 4. 検索方式と規模方針
@@ -151,6 +152,6 @@ flowchart TD
 
 - CDN依存を許容する配布環境と、オフライン配布時の代替方式。
 - Node.jsなしでTypeScriptをどの段階まで記述・検証するか。
-- 対応する履歴・ブックマークの入力形式と最大サイズ。
+- 履歴・ブックマークの最大サイズ（履歴は訪問ごとに1行の形式を正とする。ADR-002）。
 - Embeddingモデルの取得元、ライセンス、キャッシュ方式。
 - 検索結果の関連度評価とクラスタリング品質の評価方法。
