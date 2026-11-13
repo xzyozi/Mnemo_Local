@@ -164,15 +164,30 @@ export class IndexedDbStore implements MemoryStore {
   }
 
   async deleteSource(sourceId: string): Promise<Result<void, StoreError>> {
-    const snapshot = await this.loadAll();
-    if (!snapshot.ok) return snapshot;
-    const chunkIds = new Set(snapshot.value.chunks.filter((item) => item.sourceId === sourceId).map((item) => item.chunkId));
-    return this.saveBatch({
-      documents: snapshot.value.documents.filter((item) => item.sourceId !== sourceId),
-      chunks: snapshot.value.chunks.filter((item) => item.sourceId !== sourceId),
-      embeddings: snapshot.value.embeddings.filter((item) => !chunkIds.has(item.chunkId)),
-      events: [],
-    });
+    try {
+      const db = await this.openDb();
+      return await new Promise((resolve) => {
+        const tx = db.transaction(["sourceDocuments", "chunks", "embeddings"], "readwrite");
+        tx.onerror = () => resolve({ ok: false, error: "STORE_WRITE_FAILED" });
+        tx.oncomplete = () => resolve({ ok: true, value: undefined });
+        tx.objectStore("sourceDocuments").delete(sourceId);
+        const chunkStore = tx.objectStore("chunks");
+        const embeddingStore = tx.objectStore("embeddings");
+        const request = chunkStore.openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          const chunk = cursor.value as MemoryChunk;
+          if (chunk.sourceId === sourceId) {
+            embeddingStore.delete(chunk.chunkId);
+            cursor.delete();
+          }
+          cursor.continue();
+        };
+      });
+    } catch {
+      return { ok: false, error: "STORE_WRITE_FAILED" };
+    }
   }
 
   async clearAll(): Promise<Result<void, StoreError>> {
@@ -218,6 +233,12 @@ export const syncRawFilesToStore = async (
     eventMap.set(`${event.sourceId}|${event.eventType}|${event.timestamp}`, event);
   }
 
+  const latestEventBySource = new Map<string, SourceEvent>();
+  for (const event of eventMap.values()) {
+    const current = latestEventBySource.get(event.sourceId);
+    if (!current || event.timestamp > current.timestamp) latestEventBySource.set(event.sourceId, event);
+  }
+
   const documentsToSave: SourceDocument[] = [];
   const chunksToSave: MemoryChunk[] = [];
   const embeddingsToSave: EmbeddingCache[] = [];
@@ -225,8 +246,7 @@ export const syncRawFilesToStore = async (
   let newEmbeddingsCount = 0;
 
   for (const [sourceId, candidate] of rawDocuments) {
-    const sourceEvents = [...eventMap.values()].filter((event) => event.sourceId === sourceId).sort((a, b) => b.timestamp - a.timestamp);
-    const latest = sourceEvents[0];
+    const latest = latestEventBySource.get(sourceId);
     const document = latest
       ? { ...candidate, sourceTimestamp: latest.timestamp, sourceTimestampKind: latest.eventType }
       : candidate;

@@ -1,5 +1,5 @@
 import { chunk } from "./chunk.js";
-import type { RawFile, SearchEntry, SourceEvent, TopicAnalysisResult } from "./domain.js";
+import type { RawFile, SearchEntry, SourceEvent, StoredSnapshot, TopicAnalysisResult } from "./domain.js";
 import { DeterministicEmbeddingProvider } from "./embedding.js";
 import { renderTopicTimelineSvg } from "./graph-renderer.js";
 import { webCryptoHasher } from "./hasher.js";
@@ -95,6 +95,16 @@ const bootstrap = async (): Promise<void> => {
     executeSearch();
   };
 
+  const entriesFromSnapshot = (snapshot: StoredSnapshot): SearchEntry[] => {
+    const documents = new Map(snapshot.documents.map((document) => [document.sourceId, document]));
+    const embeddings = new Map(snapshot.embeddings.map((embedding) => [embedding.chunkId, embedding]));
+    return snapshot.chunks.flatMap((chunk) => {
+      const source = documents.get(chunk.sourceId);
+      if (!source) return [];
+      return [{ chunk, source, embedding: embeddings.get(chunk.chunkId) }];
+    });
+  };
+
   const refreshTimeline = (entries: SearchEntry[], events: SourceEvent[]): void => {
     if (!timelineContainer) return;
     const analysisRes = analyzeTopics(entries, events);
@@ -174,18 +184,20 @@ const bootstrap = async (): Promise<void> => {
       return;
     }
 
-    const nextIndex = new SearchIndex();
-    const added = nextIndex.add(syncRes.value.entries);
-    if (!added.ok) {
-      status.textContent =
-        added.error === "INDEX_SIZE_LIMIT"
-          ? "登録対象を減らして、もう一度選択してください。"
-          : "検索インデックスを更新できませんでした。既存の検索結果を保持しています。";
+    const refreshed = await store.loadAll();
+    if (!refreshed.ok) {
+      status.textContent = "保存済みデータの再読み込みに失敗しました。既存の検索結果を保持しています。";
       return;
     }
-
-    index = nextIndex;
-    refreshTimeline(syncRes.value.entries, syncRes.value.events);
+    const allEntries = entriesFromSnapshot(refreshed.value);
+    const allIndex = new SearchIndex();
+    const allAdded = allIndex.add(allEntries);
+    if (!allAdded.ok) {
+      status.textContent = "保存済みデータが上限を超えています。登録対象を減らしてください。";
+      return;
+    }
+    index = allIndex;
+    refreshTimeline(allEntries, refreshed.value.events);
 
     const failureDetails =
       readFailures.length > 0 ? ` 読込失敗詳細: ${readFailures.map((f) => f.path).join("、")}` : "";
