@@ -18,15 +18,19 @@ const isInvalidPath = (path: string): boolean => {
 
 export const normalizeUrl = (urlText: string): string => {
   const url = new URL(urlText);
-  const queryText = urlText.split("?", 2)[1]?.split("#", 1)[0] ?? "";
-  const query = queryText
-    .split("&")
-    .filter((part) => {
-      if (!part) return false;
-      const key = part.split("=", 1)[0] ?? "";
+  const isTrackingKey = (part: string): boolean => {
+    const key = part.split("=", 1)[0] ?? "";
+    try {
       const decodedKey = decodeURIComponent(key).toLowerCase();
-      return !decodedKey.startsWith("utm_") && decodedKey !== "fbclid" && decodedKey !== "gclid";
-    })
+      return decodedKey.startsWith("utm_") || decodedKey === "fbclid" || decodedKey === "gclid";
+    } catch {
+      return false;
+    }
+  };
+  const query = url.search
+    .slice(1)
+    .split("&")
+    .filter((part) => part.length > 0 && !isTrackingKey(part))
     .join("&");
   const base = `${url.protocol}//${url.host}${url.pathname}`;
   return query ? `${base}?${query}` : base;
@@ -79,7 +83,12 @@ export const normalize = async (
   }
 
   if (!isValidHttpUrl(raw.path)) return { ok: false, error: "URL_EXCLUDED" };
-  const sourceLocator = normalizeUrl(raw.path);
+  let sourceLocator: string;
+  try {
+    sourceLocator = normalizeUrl(raw.path);
+  } catch {
+    return { ok: false, error: "URL_EXCLUDED" };
+  }
   const title = raw.title.trim() || fallbackTitleFromUrl(sourceLocator);
   const body = eventBody(title, sourceLocator);
   const sourceTimestampKind = raw.sourceTimestampKind ?? (sourceType === "history" ? "visited" : "created");

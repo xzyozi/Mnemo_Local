@@ -24,6 +24,8 @@ describe("Issue #9 content events", () => {
   it("normalizes tracking parameters while preserving other query and slash details", () => {
     expect(normalizeUrl("https://Example.com/a/?utm_source=x&fbclid=f&gclid=g&keep=1#part")).toBe("https://example.com/a/?keep=1");
     expect(normalizeUrl("https://www.example.com/a")).not.toBe(normalizeUrl("https://example.com/a"));
+    expect(normalizeUrl("https://example.com/a/?q=a?b&keep=1#part?x=1")).toBe("https://example.com/a/?q=a?b&keep=1");
+    expect(() => normalizeUrl("https://example.com/a?bad=%E0%A4%A")).not.toThrow();
   });
 
   it("uses one source document and one event per visit", async () => {
