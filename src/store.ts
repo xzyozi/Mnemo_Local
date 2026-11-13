@@ -251,7 +251,7 @@ export const syncRawFilesToStore = async (
     const normalized = await normalize(raw, hasher);
     if (!normalized.ok) continue;
     const current = rawDocuments.get(normalized.value.sourceId);
-    if (!current || normalized.value.sourceTimestamp >= current.sourceTimestamp) {
+    if (!current || normalized.value.sourceTimestamp > current.sourceTimestamp) {
       rawDocuments.set(normalized.value.sourceId, normalized.value);
     }
     const event: SourceEvent = {
