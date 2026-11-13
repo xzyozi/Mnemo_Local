@@ -4,16 +4,16 @@ import type { Hasher } from "./hasher.js";
 const hasControlCharacter = (value: string): boolean =>
   [...value].some((character) => character.charCodeAt(0) < 32);
 
-
-const normalizedPath = path.replaceAll("\\", "/");
-return (
-  normalizedPath.length === 0 ||
-  normalizedPath === "." ||
-  normalizedPath.startsWith("/") ||
-  /^[A-Za-z]:/.test(normalizedPath) ||
-  normalizedPath.startsWith("//") ||
-  normalizedPath.split("/").some((segment) => segment === ".." || segment === "." || hasControlCharacter(segment))
-);
+const isInvalidPath = (path: string): boolean => {
+  const normalizedPath = path.replaceAll("\\", "/");
+  return (
+    normalizedPath.length === 0 ||
+    normalizedPath === "." ||
+    normalizedPath.startsWith("/") ||
+    /^[A-Za-z]:/.test(normalizedPath) ||
+    normalizedPath.startsWith("//") ||
+    normalizedPath.split("/").some((segment) => segment === ".." || segment === "." || hasControlCharacter(segment))
+  );
 };
 
 export const normalizeUrl = (urlText: string): string => {

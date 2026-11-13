@@ -243,7 +243,6 @@ it("filters search results by topicId", () => {
     error: "QUERY_EMPTY",
   });
 });
-});
 
 describe("Phase 3 boundary cases", () => {
   it("falls back to a generated label when keyword candidates are absent", () => {

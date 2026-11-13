@@ -45,10 +45,10 @@ export class InMemoryStore implements MemoryStore {
     const chunks = new Map(this.snapshot.chunks.map((item) => [item.chunkId, item]));
     const embeddings = new Map(this.snapshot.embeddings.map((item) => [item.chunkId, item]));
     const events = new Map(this.snapshot.events.map((item) => [`${item.sourceId}|${item.eventType}|${item.timestamp}`, item]));
-    snapshot.documents.forEach((item) => documents.set(item.sourceId, item));
-    snapshot.chunks.forEach((item) => chunks.set(item.chunkId, item));
-    snapshot.embeddings.forEach((item) => embeddings.set(item.chunkId, item));
-    snapshot.events.forEach((item) => events.set(`${item.sourceId}|${item.eventType}|${item.timestamp}`, item));
+    for (const item of snapshot.documents) documents.set(item.sourceId, item);
+    for (const item of snapshot.chunks) chunks.set(item.chunkId, item);
+    for (const item of snapshot.embeddings) embeddings.set(item.chunkId, item);
+    for (const item of snapshot.events) events.set(`${item.sourceId}|${item.eventType}|${item.timestamp}`, item);
     this.snapshot = {
       documents: [...documents.values()],
       chunks: [...chunks.values()],
@@ -153,10 +153,10 @@ export class IndexedDbStore implements MemoryStore {
         const tx = db.transaction([...STORE_NAMES], "readwrite");
         tx.onerror = () => resolve({ ok: false, error: "STORE_WRITE_FAILED" });
         tx.oncomplete = () => resolve({ ok: true, value: undefined });
-        snapshot.documents.forEach((item) => tx.objectStore("sourceDocuments").put(item));
-        snapshot.chunks.forEach((item) => tx.objectStore("chunks").put(item));
-        snapshot.embeddings.forEach((item) => tx.objectStore("embeddings").put(item));
-        snapshot.events.forEach((item) => tx.objectStore("events").put(item));
+        for (const item of snapshot.documents) tx.objectStore("sourceDocuments").put(item);
+        for (const item of snapshot.chunks) tx.objectStore("chunks").put(item);
+        for (const item of snapshot.embeddings) tx.objectStore("embeddings").put(item);
+        for (const item of snapshot.events) tx.objectStore("events").put(item);
       });
     } catch {
       return { ok: false, error: "STORE_WRITE_FAILED" };
@@ -197,7 +197,7 @@ export class IndexedDbStore implements MemoryStore {
         const tx = db.transaction([...STORE_NAMES], "readwrite");
         tx.onerror = () => resolve({ ok: false, error: "STORE_CLEAR_FAILED" });
         tx.oncomplete = () => resolve({ ok: true, value: undefined });
-        STORE_NAMES.forEach((name) => tx.objectStore(name).clear());
+        for (const name of STORE_NAMES) tx.objectStore(name).clear();
       });
     } catch {
       return { ok: false, error: "STORE_CLEAR_FAILED" };
