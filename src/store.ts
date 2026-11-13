@@ -49,11 +49,17 @@ export class InMemoryStore implements MemoryStore {
     const documents = new Map(this.snapshot.documents.map((item) => [item.sourceId, item]));
     const chunks = new Map(this.snapshot.chunks.map((item) => [item.chunkId, item]));
     const embeddings = new Map(this.snapshot.embeddings.map((item) => [item.chunkId, item]));
-    const events = new Map(this.snapshot.events.map((item) => [`${item.sourceId}|${item.eventType}|${item.timestamp}`, item]));
+    const events = new Map(
+      this.snapshot.events.map((item) => [
+        `${item.sourceId}|${item.eventType}|${item.timestamp}`,
+        item,
+      ]),
+    );
     for (const item of snapshot.documents) documents.set(item.sourceId, item);
     for (const item of snapshot.chunks) chunks.set(item.chunkId, item);
     for (const item of snapshot.embeddings) embeddings.set(item.chunkId, item);
-    for (const item of snapshot.events) events.set(`${item.sourceId}|${item.eventType}|${item.timestamp}`, item);
+    for (const item of snapshot.events)
+      events.set(`${item.sourceId}|${item.eventType}|${item.timestamp}`, item);
     this.snapshot = {
       documents: [...documents.values()],
       chunks: [...chunks.values()],
@@ -65,9 +71,13 @@ export class InMemoryStore implements MemoryStore {
 
   async deleteSource(sourceId: string): Promise<Result<void, StoreError>> {
     this.snapshot.documents = this.snapshot.documents.filter((item) => item.sourceId !== sourceId);
-    const chunkIds = new Set(this.snapshot.chunks.filter((item) => item.sourceId === sourceId).map((item) => item.chunkId));
+    const chunkIds = new Set(
+      this.snapshot.chunks.filter((item) => item.sourceId === sourceId).map((item) => item.chunkId),
+    );
     this.snapshot.chunks = this.snapshot.chunks.filter((item) => item.sourceId !== sourceId);
-    this.snapshot.embeddings = this.snapshot.embeddings.filter((item) => !chunkIds.has(item.chunkId));
+    this.snapshot.embeddings = this.snapshot.embeddings.filter(
+      (item) => !chunkIds.has(item.chunkId),
+    );
     return { ok: true, value: undefined };
   }
 
@@ -95,10 +105,14 @@ export class IndexedDbStore implements MemoryStore {
         const db = request.result;
         const transaction = request.transaction;
         if (!transaction) return;
-        if (!db.objectStoreNames.contains("sourceDocuments")) db.createObjectStore("sourceDocuments", { keyPath: "sourceId" });
-        if (!db.objectStoreNames.contains("chunks")) db.createObjectStore("chunks", { keyPath: "chunkId" });
-        if (!db.objectStoreNames.contains("embeddings")) db.createObjectStore("embeddings", { keyPath: "chunkId" });
-        if (!db.objectStoreNames.contains("events")) db.createObjectStore("events", { keyPath: ["sourceId", "eventType", "timestamp"] });
+        if (!db.objectStoreNames.contains("sourceDocuments"))
+          db.createObjectStore("sourceDocuments", { keyPath: "sourceId" });
+        if (!db.objectStoreNames.contains("chunks"))
+          db.createObjectStore("chunks", { keyPath: "chunkId" });
+        if (!db.objectStoreNames.contains("embeddings"))
+          db.createObjectStore("embeddings", { keyPath: "chunkId" });
+        if (!db.objectStoreNames.contains("events"))
+          db.createObjectStore("events", { keyPath: ["sourceId", "eventType", "timestamp"] });
         if (request.oldVersion < 2) {
           const historyIds = new Set<string>();
           const docCursor = transaction.objectStore("sourceDocuments").openCursor();
@@ -110,7 +124,9 @@ export class IndexedDbStore implements MemoryStore {
                 const chunk = chunkCursor.result;
                 if (!chunk) return;
                 if (historyIds.has((chunk.value as { sourceId: string }).sourceId)) {
-                  transaction.objectStore("embeddings").delete((chunk.value as { chunkId: string }).chunkId);
+                  transaction
+                    .objectStore("embeddings")
+                    .delete((chunk.value as { chunkId: string }).chunkId);
                   chunk.delete();
                 }
                 chunk.continue();
@@ -136,15 +152,16 @@ export class IndexedDbStore implements MemoryStore {
         const tx = db.transaction([...STORE_NAMES], "readonly");
         const requests = STORE_NAMES.map((name) => tx.objectStore(name).getAll());
         tx.onerror = () => resolve({ ok: false, error: "STORE_READ_FAILED" });
-        tx.oncomplete = () => resolve({
-          ok: true,
-          value: {
-            documents: (requests[0]?.result as SourceDocument[]) ?? [],
-            chunks: (requests[1]?.result as MemoryChunk[]) ?? [],
-            embeddings: (requests[2]?.result as EmbeddingCache[]) ?? [],
-            events: (requests[3]?.result as SourceEvent[]) ?? [],
-          },
-        });
+        tx.oncomplete = () =>
+          resolve({
+            ok: true,
+            value: {
+              documents: (requests[0]?.result as SourceDocument[]) ?? [],
+              chunks: (requests[1]?.result as MemoryChunk[]) ?? [],
+              embeddings: (requests[2]?.result as EmbeddingCache[]) ?? [],
+              events: (requests[3]?.result as SourceEvent[]) ?? [],
+            },
+          });
       });
     } catch {
       return { ok: false, error: "STORE_READ_FAILED" };
@@ -222,7 +239,9 @@ export const syncRawFilesToStore = async (
   const documentMap = new Map(existing.documents.map((item) => [item.sourceId, item]));
   const chunkMap = new Map(existing.chunks.map((item) => [item.chunkId, item]));
   const embeddingMap = new Map(existing.embeddings.map((item) => [item.chunkId, item]));
-  const eventMap = new Map(existing.events.map((item) => [`${item.sourceId}|${item.eventType}|${item.timestamp}`, item]));
+  const eventMap = new Map(
+    existing.events.map((item) => [`${item.sourceId}|${item.eventType}|${item.timestamp}`, item]),
+  );
   const rawDocuments = new Map<string, SourceDocument>();
 
   for (const raw of rawFiles) {
@@ -241,7 +260,8 @@ export const syncRawFilesToStore = async (
   const latestEventBySource = new Map<string, SourceEvent>();
   for (const event of eventMap.values()) {
     const current = latestEventBySource.get(event.sourceId);
-    if (!current || event.timestamp > current.timestamp) latestEventBySource.set(event.sourceId, event);
+    if (!current || event.timestamp > current.timestamp)
+      latestEventBySource.set(event.sourceId, event);
   }
 
   const documentsToSave: SourceDocument[] = [];
@@ -268,7 +288,10 @@ export const syncRawFilesToStore = async (
     for (const item of chunks) {
       const previousChunk = chunkMap.get(item.chunkId);
       const previousEmbedding = embeddingMap.get(item.chunkId);
-      if (previousChunk?.contentHash === item.contentHash && previousEmbedding?.modelId === embeddingProvider.modelId) {
+      if (
+        previousChunk?.contentHash === item.contentHash &&
+        previousEmbedding?.modelId === embeddingProvider.modelId
+      ) {
         embeddingsToSave.push(previousEmbedding);
         continue;
       }
@@ -286,12 +309,34 @@ export const syncRawFilesToStore = async (
     }
   }
 
-  const saved = await store.saveBatch({ documents: documentsToSave, chunks: chunksToSave, embeddings: embeddingsToSave, events: [...eventMap.values()] });
+  const saved = await store.saveBatch({
+    documents: documentsToSave,
+    chunks: chunksToSave,
+    embeddings: embeddingsToSave,
+    events: [...eventMap.values()],
+  });
   if (!saved.ok) return saved;
   const entries = chunksToSave.flatMap((chunkItem) => {
     const source = documentsToSave.find((item) => item.sourceId === chunkItem.sourceId);
     if (!source) return [];
-    return [{ chunk: chunkItem, source, embedding: embeddingsToSave.find((item) => item.chunkId === chunkItem.chunkId) }];
+    return [
+      {
+        chunk: chunkItem,
+        source,
+        embedding: embeddingsToSave.find((item) => item.chunkId === chunkItem.chunkId),
+      },
+    ];
   });
-  return { ok: true, value: { documentsCount: documentsToSave.length, chunksCount: chunksToSave.length, reusedChunksCount, newEmbeddingsCount, eventsCount: eventMap.size, entries, events: [...eventMap.values()] } };
+  return {
+    ok: true,
+    value: {
+      documentsCount: documentsToSave.length,
+      chunksCount: chunksToSave.length,
+      reusedChunksCount,
+      newEmbeddingsCount,
+      eventsCount: eventMap.size,
+      entries,
+      events: [...eventMap.values()],
+    },
+  };
 };

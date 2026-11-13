@@ -329,7 +329,11 @@ export const analyzeTopics = (
     const timeline: MonthlyTopicCount[] = [];
     for (const month of [...monthMap.keys()].sort()) {
       const counts = monthMap.get(month) ?? {};
-      timeline.push({ month, counts, total: Object.values(counts).reduce((sum, count) => sum + count, 0) });
+      timeline.push({
+        month,
+        counts,
+        total: Object.values(counts).reduce((sum, count) => sum + count, 0),
+      });
     }
 
     return {
