@@ -154,7 +154,7 @@ it("clusters entries by embedding similarity and generates meaningful topic labe
   expect(timeline[0]?.month).toBe("2026-01");
   expect(timeline[0]?.total).toBe(2);
   expect(timeline[1]?.month).toBe("2026-02");
-  expect(timeline[1]?.total).toBe(4);
+  expect(timeline[1]?.total).toBe(2);
 });
 
 it("generates valid SVG markup with bars and legend", () => {

@@ -286,6 +286,7 @@ export const syncRawFilesToStore = async (
 
   for (const [sourceId, candidate] of rawDocuments) {
     const previous = documentMap.get(sourceId);
+    const latest = latestEventBySource.get(sourceId);
     const latestDocument = latest
       ? { ...candidate, sourceTimestamp: latest.timestamp, sourceTimestampKind: latest.eventType }
       : candidate;
