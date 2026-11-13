@@ -283,7 +283,7 @@ export const syncRawFilesToStore = async (
       ? { ...candidate, sourceTimestamp: latest.timestamp, sourceTimestampKind: latest.eventType }
       : candidate;
     const document =
-      previous && previous.sourceTimestamp > latestDocument.sourceTimestamp
+      previous && previous.sourceTimestamp >= latestDocument.sourceTimestamp
         ? previous
         : latestDocument;
     documentsToSave.push(document);
