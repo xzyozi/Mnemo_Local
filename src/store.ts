@@ -1,29 +1,27 @@
-import { chunk } from "./chunk.js";
 import type {
   EmbeddingCache,
   MemoryChunk,
-  RawFile,
   Result,
   SearchEntry,
   SourceDocument,
+  SourceEvent,
+  StoredSnapshot,
   StoreError,
+  RawFile,
 } from "./domain.js";
-import type { EmbeddingProvider } from "./embedding.js";
-import type { Hasher } from "./hasher.js";
+import { chunk } from "./chunk.js";
 import { normalize } from "./normalize.js";
-
-export interface StoredSnapshot {
-  documents: SourceDocument[];
-  chunks: MemoryChunk[];
-  embeddings: EmbeddingCache[];
-}
+import type { Hasher } from "./hasher.js";
+import type { EmbeddingProvider } from "./embedding.js";
 
 export interface SyncSummary {
   documentsCount: number;
   chunksCount: number;
   reusedChunksCount: number;
   newEmbeddingsCount: number;
+  eventsCount: number;
   entries: SearchEntry[];
+  events: SourceEvent[];
 }
 
 export interface MemoryStore {
@@ -33,56 +31,50 @@ export interface MemoryStore {
   clearAll(): Promise<Result<void, StoreError>>;
 }
 
+const emptySnapshot = (): StoredSnapshot => ({ documents: [], chunks: [], embeddings: [], events: [] });
+
 export class InMemoryStore implements MemoryStore {
-  private documents = new Map<string, SourceDocument>();
-  private chunks = new Map<string, MemoryChunk>();
-  private embeddings = new Map<string, EmbeddingCache>();
+  private snapshot = emptySnapshot();
 
   async loadAll(): Promise<Result<StoredSnapshot, StoreError>> {
-    return {
-      ok: true,
-      value: {
-        documents: Array.from(this.documents.values()),
-        chunks: Array.from(this.chunks.values()),
-        embeddings: Array.from(this.embeddings.values()),
-      },
-    };
+    return { ok: true, value: this.snapshot };
   }
 
   async saveBatch(snapshot: StoredSnapshot): Promise<Result<void, StoreError>> {
-    for (const doc of snapshot.documents) {
-      this.documents.set(doc.sourceId, doc);
-    }
-    for (const ch of snapshot.chunks) {
-      this.chunks.set(ch.chunkId, ch);
-    }
-    for (const em of snapshot.embeddings) {
-      this.embeddings.set(em.chunkId, em);
-    }
+    const documents = new Map(this.snapshot.documents.map((item) => [item.sourceId, item]));
+    const chunks = new Map(this.snapshot.chunks.map((item) => [item.chunkId, item]));
+    const embeddings = new Map(this.snapshot.embeddings.map((item) => [item.chunkId, item]));
+    const events = new Map(this.snapshot.events.map((item) => [`${item.sourceId}|${item.eventType}|${item.timestamp}`, item]));
+    snapshot.documents.forEach((item) => documents.set(item.sourceId, item));
+    snapshot.chunks.forEach((item) => chunks.set(item.chunkId, item));
+    snapshot.embeddings.forEach((item) => embeddings.set(item.chunkId, item));
+    snapshot.events.forEach((item) => events.set(`${item.sourceId}|${item.eventType}|${item.timestamp}`, item));
+    this.snapshot = {
+      documents: [...documents.values()],
+      chunks: [...chunks.values()],
+      embeddings: [...embeddings.values()],
+      events: [...events.values()],
+    };
     return { ok: true, value: undefined };
   }
 
   async deleteSource(sourceId: string): Promise<Result<void, StoreError>> {
-    this.documents.delete(sourceId);
-    for (const [chunkId, ch] of this.chunks.entries()) {
-      if (ch.sourceId === sourceId) {
-        this.chunks.delete(chunkId);
-        this.embeddings.delete(chunkId);
-      }
-    }
+    this.snapshot.documents = this.snapshot.documents.filter((item) => item.sourceId !== sourceId);
+    const chunkIds = new Set(this.snapshot.chunks.filter((item) => item.sourceId === sourceId).map((item) => item.chunkId));
+    this.snapshot.chunks = this.snapshot.chunks.filter((item) => item.sourceId !== sourceId);
+    this.snapshot.embeddings = this.snapshot.embeddings.filter((item) => !chunkIds.has(item.chunkId));
     return { ok: true, value: undefined };
   }
 
   async clearAll(): Promise<Result<void, StoreError>> {
-    this.documents.clear();
-    this.chunks.clear();
-    this.embeddings.clear();
+    this.snapshot = emptySnapshot();
     return { ok: true, value: undefined };
   }
 }
 
 const DB_NAME = "local-semantic-memory";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+const STORE_NAMES = ["sourceDocuments", "chunks", "embeddings", "events"] as const;
 
 export class IndexedDbStore implements MemoryStore {
   private openDb(): Promise<IDBDatabase> {
@@ -96,15 +88,10 @@ export class IndexedDbStore implements MemoryStore {
       request.onsuccess = () => resolve(request.result);
       request.onupgradeneeded = () => {
         const db = request.result;
-        if (!db.objectStoreNames.contains("sourceDocuments")) {
-          db.createObjectStore("sourceDocuments", { keyPath: "sourceId" });
-        }
-        if (!db.objectStoreNames.contains("chunks")) {
-          db.createObjectStore("chunks", { keyPath: "chunkId" });
-        }
-        if (!db.objectStoreNames.contains("embeddings")) {
-          db.createObjectStore("embeddings", { keyPath: "chunkId" });
-        }
+        if (!db.objectStoreNames.contains("sourceDocuments")) db.createObjectStore("sourceDocuments", { keyPath: "sourceId" });
+        if (!db.objectStoreNames.contains("chunks")) db.createObjectStore("chunks", { keyPath: "chunkId" });
+        if (!db.objectStoreNames.contains("embeddings")) db.createObjectStore("embeddings", { keyPath: "chunkId" });
+        if (!db.objectStoreNames.contains("events")) db.createObjectStore("events", { keyPath: ["sourceId", "eventType", "timestamp"] });
       };
     });
   }
@@ -112,23 +99,19 @@ export class IndexedDbStore implements MemoryStore {
   async loadAll(): Promise<Result<StoredSnapshot, StoreError>> {
     try {
       const db = await this.openDb();
-      return new Promise((resolve) => {
-        const tx = db.transaction(["sourceDocuments", "chunks", "embeddings"], "readonly");
-        const docReq = tx.objectStore("sourceDocuments").getAll();
-        const chunkReq = tx.objectStore("chunks").getAll();
-        const embedReq = tx.objectStore("embeddings").getAll();
-
+      return await new Promise((resolve) => {
+        const tx = db.transaction([...STORE_NAMES], "readonly");
+        const requests = STORE_NAMES.map((name) => tx.objectStore(name).getAll());
         tx.onerror = () => resolve({ ok: false, error: "STORE_READ_FAILED" });
-        tx.oncomplete = () => {
-          resolve({
-            ok: true,
-            value: {
-              documents: (docReq.result as SourceDocument[]) || [],
-              chunks: (chunkReq.result as MemoryChunk[]) || [],
-              embeddings: (embedReq.result as EmbeddingCache[]) || [],
-            },
-          });
-        };
+        tx.oncomplete = () => resolve({
+          ok: true,
+          value: {
+            documents: (requests[0]?.result as SourceDocument[]) ?? [],
+            chunks: (requests[1]?.result as MemoryChunk[]) ?? [],
+            embeddings: (requests[2]?.result as EmbeddingCache[]) ?? [],
+            events: (requests[3]?.result as SourceEvent[]) ?? [],
+          },
+        });
       });
     } catch {
       return { ok: false, error: "STORE_READ_FAILED" };
@@ -138,19 +121,14 @@ export class IndexedDbStore implements MemoryStore {
   async saveBatch(snapshot: StoredSnapshot): Promise<Result<void, StoreError>> {
     try {
       const db = await this.openDb();
-      return new Promise((resolve) => {
-        const tx = db.transaction(["sourceDocuments", "chunks", "embeddings"], "readwrite");
+      return await new Promise((resolve) => {
+        const tx = db.transaction([...STORE_NAMES], "readwrite");
         tx.onerror = () => resolve({ ok: false, error: "STORE_WRITE_FAILED" });
         tx.oncomplete = () => resolve({ ok: true, value: undefined });
-
-        const docStore = tx.objectStore("sourceDocuments");
-        for (const doc of snapshot.documents) docStore.put(doc);
-
-        const chunkStore = tx.objectStore("chunks");
-        for (const ch of snapshot.chunks) chunkStore.put(ch);
-
-        const embedStore = tx.objectStore("embeddings");
-        for (const em of snapshot.embeddings) embedStore.put(em);
+        snapshot.documents.forEach((item) => tx.objectStore("sourceDocuments").put(item));
+        snapshot.chunks.forEach((item) => tx.objectStore("chunks").put(item));
+        snapshot.embeddings.forEach((item) => tx.objectStore("embeddings").put(item));
+        snapshot.events.forEach((item) => tx.objectStore("events").put(item));
       });
     } catch {
       return { ok: false, error: "STORE_WRITE_FAILED" };
@@ -158,46 +136,25 @@ export class IndexedDbStore implements MemoryStore {
   }
 
   async deleteSource(sourceId: string): Promise<Result<void, StoreError>> {
-    try {
-      const db = await this.openDb();
-      return new Promise((resolve) => {
-        const tx = db.transaction(["sourceDocuments", "chunks", "embeddings"], "readwrite");
-        tx.onerror = () => resolve({ ok: false, error: "STORE_WRITE_FAILED" });
-        tx.oncomplete = () => resolve({ ok: true, value: undefined });
-
-        tx.objectStore("sourceDocuments").delete(sourceId);
-
-        const chunkStore = tx.objectStore("chunks");
-        const embedStore = tx.objectStore("embeddings");
-        const req = chunkStore.openCursor();
-        req.onsuccess = () => {
-          const cursor = req.result;
-          if (cursor) {
-            const ch = cursor.value as MemoryChunk;
-            if (ch.sourceId === sourceId) {
-              cursor.delete();
-              embedStore.delete(ch.chunkId);
-            }
-            cursor.continue();
-          }
-        };
-      });
-    } catch {
-      return { ok: false, error: "STORE_WRITE_FAILED" };
-    }
+    const snapshot = await this.loadAll();
+    if (!snapshot.ok) return snapshot;
+    const chunkIds = new Set(snapshot.value.chunks.filter((item) => item.sourceId === sourceId).map((item) => item.chunkId));
+    return this.saveBatch({
+      documents: snapshot.value.documents.filter((item) => item.sourceId !== sourceId),
+      chunks: snapshot.value.chunks.filter((item) => item.sourceId !== sourceId),
+      embeddings: snapshot.value.embeddings.filter((item) => !chunkIds.has(item.chunkId)),
+      events: [],
+    });
   }
 
   async clearAll(): Promise<Result<void, StoreError>> {
     try {
       const db = await this.openDb();
-      return new Promise((resolve) => {
-        const tx = db.transaction(["sourceDocuments", "chunks", "embeddings"], "readwrite");
+      return await new Promise((resolve) => {
+        const tx = db.transaction([...STORE_NAMES], "readwrite");
         tx.onerror = () => resolve({ ok: false, error: "STORE_CLEAR_FAILED" });
         tx.oncomplete = () => resolve({ ok: true, value: undefined });
-
-        tx.objectStore("sourceDocuments").clear();
-        tx.objectStore("chunks").clear();
-        tx.objectStore("embeddings").clear();
+        STORE_NAMES.forEach((name) => tx.objectStore(name).clear());
       });
     } catch {
       return { ok: false, error: "STORE_CLEAR_FAILED" };
@@ -211,99 +168,77 @@ export const syncRawFilesToStore = async (
   hasher: Hasher,
   embeddingProvider: EmbeddingProvider,
 ): Promise<Result<SyncSummary, StoreError>> => {
-  const loadRes = await store.loadAll();
-  if (!loadRes.ok) return loadRes;
+  const loaded = await store.loadAll();
+  if (!loaded.ok) return loaded;
+  const existing = loaded.value;
+  const documentMap = new Map(existing.documents.map((item) => [item.sourceId, item]));
+  const chunkMap = new Map(existing.chunks.map((item) => [item.chunkId, item]));
+  const embeddingMap = new Map(existing.embeddings.map((item) => [item.chunkId, item]));
+  const eventMap = new Map(existing.events.map((item) => [`${item.sourceId}|${item.eventType}|${item.timestamp}`, item]));
+  const rawDocuments = new Map<string, SourceDocument>();
 
-  const existing = loadRes.value;
-  const docMap = new Map(existing.documents.map((d) => [d.sourceId, d]));
-  const chunkMap = new Map(existing.chunks.map((c) => [c.chunkId, c]));
-  const embedMap = new Map(existing.embeddings.map((e) => [e.chunkId, e]));
+  for (const raw of rawFiles) {
+    const normalized = await normalize(raw, hasher);
+    if (!normalized.ok) continue;
+    rawDocuments.set(normalized.value.sourceId, normalized.value);
+    const event: SourceEvent = {
+      sourceId: normalized.value.sourceId,
+      eventType: normalized.value.sourceTimestampKind,
+      timestamp: normalized.value.sourceTimestamp,
+      ...(normalized.value.sourceType === "markdown" ? {} : { originalLocator: raw.path }),
+    };
+    eventMap.set(`${event.sourceId}|${event.eventType}|${event.timestamp}`, event);
+  }
 
   const documentsToSave: SourceDocument[] = [];
   const chunksToSave: MemoryChunk[] = [];
   const embeddingsToSave: EmbeddingCache[] = [];
-
   let reusedChunksCount = 0;
   let newEmbeddingsCount = 0;
 
-  for (const raw of rawFiles) {
-    const normRes = await normalize(raw, hasher);
-    if (!normRes.ok) continue;
-
-    const doc = normRes.value;
-    documentsToSave.push(doc);
-
-    const prevDoc = docMap.get(doc.sourceId);
-    let docChunks: MemoryChunk[];
-
-    if (prevDoc && prevDoc.sourceHash === doc.sourceHash) {
-      // Re-use chunks
-      docChunks = existing.chunks.filter((c) => c.sourceId === doc.sourceId);
+  for (const [sourceId, candidate] of rawDocuments) {
+    const sourceEvents = [...eventMap.values()].filter((event) => event.sourceId === sourceId).sort((a, b) => b.timestamp - a.timestamp);
+    const latest = sourceEvents[0];
+    const document = latest
+      ? { ...candidate, sourceTimestamp: latest.timestamp, sourceTimestampKind: latest.eventType }
+      : candidate;
+    const previous = documentMap.get(sourceId);
+    documentsToSave.push(document);
+    let chunks: MemoryChunk[];
+    if (previous?.sourceHash === document.sourceHash) {
+      chunks = existing.chunks.filter((item) => item.sourceId === sourceId);
+      reusedChunksCount += chunks.length;
     } else {
-      docChunks = await chunk(doc, hasher);
+      chunks = await chunk(document, hasher);
     }
-
-    chunksToSave.push(...docChunks);
-
-    for (const ch of docChunks) {
-      const prevEmbed = embedMap.get(ch.chunkId);
-      const prevChunk = chunkMap.get(ch.chunkId);
-
-      if (
-        prevEmbed &&
-        prevChunk &&
-        prevChunk.contentHash === ch.contentHash &&
-        prevEmbed.modelId === embeddingProvider.modelId
-      ) {
-        embeddingsToSave.push(prevEmbed);
-        reusedChunksCount++;
-      } else {
-        const embedRes = await embeddingProvider.embedPassage(ch.body);
-        if (embedRes.ok) {
-          const newEmbed: EmbeddingCache = {
-            chunkId: ch.chunkId,
-            modelId: embeddingProvider.modelId,
-            dimensions: embeddingProvider.dimensions,
-            vector: embedRes.value,
-            generatedAt: new Date().toISOString(),
-          };
-          embeddingsToSave.push(newEmbed);
-          newEmbeddingsCount++;
-        }
+    chunksToSave.push(...chunks);
+    for (const item of chunks) {
+      const previousChunk = chunkMap.get(item.chunkId);
+      const previousEmbedding = embeddingMap.get(item.chunkId);
+      if (previousChunk?.contentHash === item.contentHash && previousEmbedding?.modelId === embeddingProvider.modelId) {
+        embeddingsToSave.push(previousEmbedding);
+        continue;
+      }
+      const embedded = await embeddingProvider.embedPassage(item.body);
+      if (embedded.ok) {
+        embeddingsToSave.push({
+          chunkId: item.chunkId,
+          modelId: embeddingProvider.modelId,
+          dimensions: embeddingProvider.dimensions,
+          vector: embedded.value,
+          generatedAt: new Date().toISOString(),
+        });
+        newEmbeddingsCount += 1;
       }
     }
   }
 
-  const saveRes = await store.saveBatch({
-    documents: documentsToSave,
-    chunks: chunksToSave,
-    embeddings: embeddingsToSave,
+  const saved = await store.saveBatch({ documents: documentsToSave, chunks: chunksToSave, embeddings: embeddingsToSave, events: [...eventMap.values()] });
+  if (!saved.ok) return saved;
+  const entries = chunksToSave.flatMap((chunkItem) => {
+    const source = documentsToSave.find((item) => item.sourceId === chunkItem.sourceId);
+    if (!source) return [];
+    return [{ chunk: chunkItem, source, embedding: embeddingsToSave.find((item) => item.chunkId === chunkItem.chunkId) }];
   });
-  if (!saveRes.ok) return saveRes;
-
-  // Build current entries from all saved + existing data
-  const finalDocMap = new Map(documentsToSave.map((d) => [d.sourceId, d]));
-  const finalEmbedMap = new Map(embeddingsToSave.map((e) => [e.chunkId, e]));
-
-  const entries: SearchEntry[] = [];
-  for (const ch of chunksToSave) {
-    const d = finalDocMap.get(ch.sourceId);
-    if (!d) continue;
-    entries.push({
-      chunk: ch,
-      source: d,
-      embedding: finalEmbedMap.get(ch.chunkId),
-    });
-  }
-
-  return {
-    ok: true,
-    value: {
-      documentsCount: documentsToSave.length,
-      chunksCount: chunksToSave.length,
-      reusedChunksCount,
-      newEmbeddingsCount,
-      entries,
-    },
-  };
+  return { ok: true, value: { documentsCount: documentsToSave.length, chunksCount: chunksToSave.length, reusedChunksCount, newEmbeddingsCount, eventsCount: eventMap.size, entries, events: [...eventMap.values()] } };
 };
