@@ -153,8 +153,18 @@ describe("Issue #9 content events", () => {
   it("does not roll a document back when an older export is imported", async () => {
     const store = new InMemoryStore();
     const provider = new DeterministicEmbeddingProvider("test", 8);
-    await syncRawFilesToStore([{ ...history(2000), title: "新しいタイトル" }], store, fakeHasher, provider);
-    await syncRawFilesToStore([{ ...history(1000), title: "古いタイトル" }], store, fakeHasher, provider);
+    await syncRawFilesToStore(
+      [{ ...history(2000), title: "新しいタイトル" }],
+      store,
+      fakeHasher,
+      provider,
+    );
+    await syncRawFilesToStore(
+      [{ ...history(1000), title: "古いタイトル" }],
+      store,
+      fakeHasher,
+      provider,
+    );
     const snapshot = await store.loadAll();
     expect(snapshot.ok).toBe(true);
     if (!snapshot.ok) return;

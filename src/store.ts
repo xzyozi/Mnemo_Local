@@ -60,17 +60,11 @@ export class InMemoryStore implements MemoryStore {
     const documents = new Map(this.snapshot.documents.map((item) => [item.sourceId, item]));
     const chunks = new Map(this.snapshot.chunks.map((item) => [item.chunkId, item]));
     const embeddings = new Map(this.snapshot.embeddings.map((item) => [item.chunkId, item]));
-    const events = new Map(
-      this.snapshot.events.map((item) => [
-        eventKey(item),
-        item,
-      ]),
-    );
+    const events = new Map(this.snapshot.events.map((item) => [eventKey(item), item]));
     for (const item of snapshot.documents) documents.set(item.sourceId, item);
     for (const item of snapshot.chunks) chunks.set(item.chunkId, item);
     for (const item of snapshot.embeddings) embeddings.set(item.chunkId, item);
-    for (const item of snapshot.events)
-      events.set(eventKey(item), item);
+    for (const item of snapshot.events) events.set(eventKey(item), item);
     this.snapshot = {
       documents: [...documents.values()],
       chunks: [...chunks.values()],
@@ -250,9 +244,7 @@ export const syncRawFilesToStore = async (
   const documentMap = new Map(existing.documents.map((item) => [item.sourceId, item]));
   const chunkMap = new Map(existing.chunks.map((item) => [item.chunkId, item]));
   const embeddingMap = new Map(existing.embeddings.map((item) => [item.chunkId, item]));
-  const eventMap = new Map(
-    existing.events.map((item) => [eventKey(item), item]),
-  );
+  const eventMap = new Map(existing.events.map((item) => [eventKey(item), item]));
   const rawDocuments = new Map<string, SourceDocument>();
 
   for (const raw of rawFiles) {
@@ -290,9 +282,10 @@ export const syncRawFilesToStore = async (
     const latestDocument = latest
       ? { ...candidate, sourceTimestamp: latest.timestamp, sourceTimestampKind: latest.eventType }
       : candidate;
-    const document = previous && previous.sourceTimestamp > latestDocument.sourceTimestamp
-      ? previous
-      : latestDocument;
+    const document =
+      previous && previous.sourceTimestamp > latestDocument.sourceTimestamp
+        ? previous
+        : latestDocument;
     documentsToSave.push(document);
     let chunks: MemoryChunk[];
     if (previous?.sourceHash === document.sourceHash) {

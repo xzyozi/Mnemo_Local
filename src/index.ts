@@ -109,11 +109,13 @@ const bootstrap = async (): Promise<void> => {
     return snapshot.chunks.flatMap((storedChunk) => {
       const source = documents.get(storedChunk.sourceId);
       if (!source) return [];
-      return [{
-        chunk: storedChunk,
-        source,
-        embedding: embeddings.get(storedChunk.chunkId),
-      }];
+      return [
+        {
+          chunk: storedChunk,
+          source,
+          embedding: embeddings.get(storedChunk.chunkId),
+        },
+      ];
     });
   };
 
