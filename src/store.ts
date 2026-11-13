@@ -31,6 +31,9 @@ export interface MemoryStore {
   clearAll(): Promise<Result<void, StoreError>>;
 }
 
+const eventKey = (event: SourceEvent): string =>
+  `${event.sourceId}|${event.eventType}|${event.timestamp}`;
+
 const emptySnapshot = (): StoredSnapshot => ({
   documents: [],
   chunks: [],
@@ -42,24 +45,26 @@ export class InMemoryStore implements MemoryStore {
   private snapshot = emptySnapshot();
 
   async loadAll(): Promise<Result<StoredSnapshot, StoreError>> {
-    return { ok: true, value: this.snapshot };
+    return {
+      ok: true,
+      value: {
+        documents: this.snapshot.documents.map((item) => ({ ...item })),
+        chunks: this.snapshot.chunks.map((item) => ({ ...item })),
+        embeddings: this.snapshot.embeddings.map((item) => ({ ...item, vector: [...item.vector] })),
+        events: this.snapshot.events.map((item) => ({ ...item })),
+      },
+    };
   }
 
   async saveBatch(snapshot: StoredSnapshot): Promise<Result<void, StoreError>> {
     const documents = new Map(this.snapshot.documents.map((item) => [item.sourceId, item]));
     const chunks = new Map(this.snapshot.chunks.map((item) => [item.chunkId, item]));
     const embeddings = new Map(this.snapshot.embeddings.map((item) => [item.chunkId, item]));
-    const events = new Map(
-      this.snapshot.events.map((item) => [
-        `${item.sourceId}|${item.eventType}|${item.timestamp}`,
-        item,
-      ]),
-    );
+    const events = new Map(this.snapshot.events.map((item) => [eventKey(item), item]));
     for (const item of snapshot.documents) documents.set(item.sourceId, item);
     for (const item of snapshot.chunks) chunks.set(item.chunkId, item);
     for (const item of snapshot.embeddings) embeddings.set(item.chunkId, item);
-    for (const item of snapshot.events)
-      events.set(`${item.sourceId}|${item.eventType}|${item.timestamp}`, item);
+    for (const item of snapshot.events) events.set(eventKey(item), item);
     this.snapshot = {
       documents: [...documents.values()],
       chunks: [...chunks.values()],
@@ -239,22 +244,23 @@ export const syncRawFilesToStore = async (
   const documentMap = new Map(existing.documents.map((item) => [item.sourceId, item]));
   const chunkMap = new Map(existing.chunks.map((item) => [item.chunkId, item]));
   const embeddingMap = new Map(existing.embeddings.map((item) => [item.chunkId, item]));
-  const eventMap = new Map(
-    existing.events.map((item) => [`${item.sourceId}|${item.eventType}|${item.timestamp}`, item]),
-  );
+  const eventMap = new Map(existing.events.map((item) => [eventKey(item), item]));
   const rawDocuments = new Map<string, SourceDocument>();
 
   for (const raw of rawFiles) {
     const normalized = await normalize(raw, hasher);
     if (!normalized.ok) continue;
-    rawDocuments.set(normalized.value.sourceId, normalized.value);
+    const current = rawDocuments.get(normalized.value.sourceId);
+    if (!current || normalized.value.sourceTimestamp > current.sourceTimestamp) {
+      rawDocuments.set(normalized.value.sourceId, normalized.value);
+    }
     const event: SourceEvent = {
       sourceId: normalized.value.sourceId,
       eventType: normalized.value.sourceTimestampKind,
       timestamp: normalized.value.sourceTimestamp,
       ...(normalized.value.sourceType === "markdown" ? {} : { originalLocator: raw.path }),
     };
-    eventMap.set(`${event.sourceId}|${event.eventType}|${event.timestamp}`, event);
+    eventMap.set(eventKey(event), event);
   }
 
   const latestEventBySource = new Map<string, SourceEvent>();
@@ -271,11 +277,16 @@ export const syncRawFilesToStore = async (
   let newEmbeddingsCount = 0;
 
   for (const [sourceId, candidate] of rawDocuments) {
+    const previous = documentMap.get(sourceId);
     const latest = latestEventBySource.get(sourceId);
-    const document = latest
+    const latestDocument = latest
       ? { ...candidate, sourceTimestamp: latest.timestamp, sourceTimestampKind: latest.eventType }
       : candidate;
-    const previous = documentMap.get(sourceId);
+    const shouldKeepPrevious =
+      previous &&
+      candidate.sourceType === "history" &&
+      previous.sourceTimestamp >= latestDocument.sourceTimestamp;
+    const document = shouldKeepPrevious ? previous : latestDocument;
     documentsToSave.push(document);
     let chunks: MemoryChunk[];
     if (previous?.sourceHash === document.sourceHash) {

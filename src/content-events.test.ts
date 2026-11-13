@@ -34,6 +34,12 @@ describe("Issue #9 content events", () => {
     expect(normalizeUrl("https://example.com/a/?q=a?b&keep=1#part?x=1")).toBe(
       "https://example.com/a/?q=a?b&keep=1",
     );
+    expect(normalizeUrl("https://example.com/a/?keep=1")).not.toBe(
+      normalizeUrl("https://example.com/a?keep=1"),
+    );
+    expect(normalizeUrl("https://example.com/a?keep=1")).not.toBe(
+      normalizeUrl("https://example.com/a?keep=2"),
+    );
     expect(() => normalizeUrl("https://example.com/a?bad=%E0%A4%A")).not.toThrow();
   });
 
@@ -115,5 +121,91 @@ describe("Issue #9 content events", () => {
     if (!result.ok) return;
     expect(result.value.topics.some((topic) => topic.topicId === "unknown")).toBe(true);
     expect(result.value.timeline[0]?.total).toBe(1);
+  });
+  it("uses the latest timestamped record as the source document title", async () => {
+    const store = new InMemoryStore();
+    const provider = new DeterministicEmbeddingProvider("test", 8);
+    const older = { ...history(1000), title: "古いタイトル" };
+    const newer = { ...history(2000), title: "新しいタイトル" };
+    await syncRawFilesToStore([newer, older], store, fakeHasher, provider);
+    const snapshot = await store.loadAll();
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok) return;
+    expect(snapshot.value.documents[0]?.title).toBe("新しいタイトル");
+  });
+
+  it("returns copies from InMemoryStore.loadAll", async () => {
+    const store = new InMemoryStore();
+    const provider = new DeterministicEmbeddingProvider("test", 8);
+    await syncRawFilesToStore([history(1000)], store, fakeHasher, provider);
+    const first = await store.loadAll();
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const firstDocument = first.value.documents[0];
+    expect(firstDocument).toBeDefined();
+    if (!firstDocument) return;
+    firstDocument.title = "変更しても保存されない";
+    const second = await store.loadAll();
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.value.documents[0]?.title).toBe("記事タイトル");
+  });
+  it("keeps the first title for same-timestamp history records", async () => {
+    const store = new InMemoryStore();
+    const provider = new DeterministicEmbeddingProvider("test", 8);
+    await syncRawFilesToStore(
+      [
+        { ...history(1000), title: "最初のタイトル" },
+        { ...history(1000), title: "後のタイトル" },
+      ],
+      store,
+      fakeHasher,
+      provider,
+    );
+    const snapshot = await store.loadAll();
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok) return;
+    expect(snapshot.value.documents[0]?.title).toBe("最初のタイトル");
+  });
+
+  it("updates bookmark content when the timestamp is unchanged", async () => {
+    const store = new InMemoryStore();
+    const provider = new DeterministicEmbeddingProvider("test", 8);
+    const bookmark = (title: string) => ({
+      path: "https://example.com/bookmark",
+      title,
+      body: "ignored",
+      updatedAt: 1000,
+      sourceType: "bookmark" as const,
+      sourceTimestampKind: "created" as const,
+    });
+    await syncRawFilesToStore([bookmark("古いタイトル")], store, fakeHasher, provider);
+    await syncRawFilesToStore([bookmark("新しいタイトル")], store, fakeHasher, provider);
+    const snapshot = await store.loadAll();
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok) return;
+    expect(snapshot.value.documents[0]?.title).toBe("新しいタイトル");
+  });
+
+  it("keeps the latest history record when records are out of order", async () => {
+    const store = new InMemoryStore();
+    const provider = new DeterministicEmbeddingProvider("test", 8);
+    await syncRawFilesToStore(
+      [{ ...history(2000), title: "新しいタイトル" }],
+      store,
+      fakeHasher,
+      provider,
+    );
+    await syncRawFilesToStore(
+      [{ ...history(1000), title: "古いタイトル" }],
+      store,
+      fakeHasher,
+      provider,
+    );
+    const snapshot = await store.loadAll();
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok) return;
+    expect(snapshot.value.documents[0]?.title).toBe("新しいタイトル");
+    expect(snapshot.value.documents[0]?.sourceTimestamp).toBe(2000);
   });
 });
