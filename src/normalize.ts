@@ -85,6 +85,9 @@ export const normalize = async (
   }
 
   if (!isValidHttpUrl(raw.path)) return { ok: false, error: "URL_EXCLUDED" };
+  if (sourceType === "bookmark" && raw.body.trim().length === 0) {
+    return { ok: false, error: "DOCUMENT_EMPTY" };
+  }
   let sourceLocator: string;
   try {
     sourceLocator = normalizeUrl(raw.path);
@@ -95,10 +98,14 @@ export const normalize = async (
   const body = eventBody(title, sourceLocator);
   const sourceTimestampKind =
     raw.sourceTimestampKind ?? (sourceType === "history" ? "visited" : "created");
+  const sourceId =
+    sourceType === "history" && raw.sourceTimestampKind === undefined
+      ? `${sourceType}:${sourceLocator}:${raw.updatedAt}`
+      : `${sourceType}:${sourceLocator}`;
   return {
     ok: true,
     value: {
-      sourceId: `${sourceType}:${sourceLocator}`,
+      sourceId,
       sourceType,
       sourceLocator,
       title,
