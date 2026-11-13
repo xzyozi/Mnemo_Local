@@ -284,7 +284,9 @@ export const analyzeTopics = (
     }
 
     // Generate monthly timeline from SourceEvent, assigning each event to its representative topic.
-    const assignmentByChunk = new Map(assignments.map((assignment) => [assignment.chunkId, assignment]));
+    const assignmentByChunk = new Map(
+      assignments.map((assignment) => [assignment.chunkId, assignment]),
+    );
     const entriesBySource = new Map<string, SearchEntry[]>();
     for (const entry of validEntries) {
       const sourceEntries = entriesBySource.get(entry.source.sourceId) ?? [];
@@ -296,7 +298,8 @@ export const analyzeTopics = (
       const scores = new Map<string, number>();
       for (const entry of sourceEntries) {
         const assignment = assignmentByChunk.get(entry.chunk.chunkId);
-        if (assignment) scores.set(assignment.topicId, (scores.get(assignment.topicId) ?? 0) + assignment.score);
+        if (assignment)
+          scores.set(assignment.topicId, (scores.get(assignment.topicId) ?? 0) + assignment.score);
       }
       topicBySource.set(sourceId, scores);
     }
@@ -305,7 +308,8 @@ export const analyzeTopics = (
     const monthMap = new Map<string, Record<string, number>>();
     for (const event of events) {
       const scores = topicBySource.get(event.sourceId);
-      const representative = scores && [...scores.entries()].sort((left, right) => right[1] - left[1])[0]?.[0];
+      const representative =
+        scores && [...scores.entries()].sort((left, right) => right[1] - left[1])[0]?.[0];
       const topicId = representative ?? unknownTopicId;
       const month = formatMonth(event.timestamp);
       const counts = monthMap.get(month) ?? {};
@@ -314,7 +318,12 @@ export const analyzeTopics = (
     }
 
     if ([...monthMap.values()].some((counts) => counts[unknownTopicId])) {
-      topics.push({ topicId: unknownTopicId, label: "不明", algorithmVersion: "1.0", createdAt: new Date().toISOString() });
+      topics.push({
+        topicId: unknownTopicId,
+        label: "不明",
+        algorithmVersion: "1.0",
+        createdAt: new Date().toISOString(),
+      });
     }
 
     const timeline: MonthlyTopicCount[] = [];

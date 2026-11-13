@@ -11,7 +11,10 @@ const fakeHasher: Hasher = {
   },
 };
 
-const history = (timestamp: number, url = "https://Example.com/article?utm_source=x&keep=1#section"): RawFile => ({
+const history = (
+  timestamp: number,
+  url = "https://Example.com/article?utm_source=x&keep=1#section",
+): RawFile => ({
   path: url,
   title: "記事タイトル",
   body: "ignored by normalizer",
@@ -22,9 +25,15 @@ const history = (timestamp: number, url = "https://Example.com/article?utm_sourc
 
 describe("Issue #9 content events", () => {
   it("normalizes tracking parameters while preserving other query and slash details", () => {
-    expect(normalizeUrl("https://Example.com/a/?utm_source=x&fbclid=f&gclid=g&keep=1#part")).toBe("https://example.com/a/?keep=1");
-    expect(normalizeUrl("https://www.example.com/a")).not.toBe(normalizeUrl("https://example.com/a"));
-    expect(normalizeUrl("https://example.com/a/?q=a?b&keep=1#part?x=1")).toBe("https://example.com/a/?q=a?b&keep=1");
+    expect(normalizeUrl("https://Example.com/a/?utm_source=x&fbclid=f&gclid=g&keep=1#part")).toBe(
+      "https://example.com/a/?keep=1",
+    );
+    expect(normalizeUrl("https://www.example.com/a")).not.toBe(
+      normalizeUrl("https://example.com/a"),
+    );
+    expect(normalizeUrl("https://example.com/a/?q=a?b&keep=1#part?x=1")).toBe(
+      "https://example.com/a/?q=a?b&keep=1",
+    );
     expect(() => normalizeUrl("https://example.com/a?bad=%E0%A4%A")).not.toThrow();
   });
 

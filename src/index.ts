@@ -1,5 +1,11 @@
 import { chunk } from "./chunk.js";
-import type { RawFile, SearchEntry, SourceEvent, StoredSnapshot, TopicAnalysisResult } from "./domain.js";
+import type {
+  RawFile,
+  SearchEntry,
+  SourceEvent,
+  StoredSnapshot,
+  TopicAnalysisResult,
+} from "./domain.js";
 import { DeterministicEmbeddingProvider } from "./embedding.js";
 import { renderTopicTimelineSvg } from "./graph-renderer.js";
 import { webCryptoHasher } from "./hasher.js";
@@ -97,7 +103,9 @@ const bootstrap = async (): Promise<void> => {
 
   const entriesFromSnapshot = (snapshot: StoredSnapshot): SearchEntry[] => {
     const documents = new Map(snapshot.documents.map((document) => [document.sourceId, document]));
-    const embeddings = new Map(snapshot.embeddings.map((embedding) => [embedding.chunkId, embedding]));
+    const embeddings = new Map(
+      snapshot.embeddings.map((embedding) => [embedding.chunkId, embedding]),
+    );
     return snapshot.chunks.flatMap((chunk) => {
       const source = documents.get(chunk.sourceId);
       if (!source) return [];
@@ -186,7 +194,8 @@ const bootstrap = async (): Promise<void> => {
 
     const refreshed = await store.loadAll();
     if (!refreshed.ok) {
-      status.textContent = "保存済みデータの再読み込みに失敗しました。既存の検索結果を保持しています。";
+      status.textContent =
+        "保存済みデータの再読み込みに失敗しました。既存の検索結果を保持しています。";
       return;
     }
     const allEntries = entriesFromSnapshot(refreshed.value);

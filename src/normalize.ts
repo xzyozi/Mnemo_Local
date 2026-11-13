@@ -12,7 +12,9 @@ const isInvalidPath = (path: string): boolean => {
     normalizedPath.startsWith("/") ||
     /^[A-Za-z]:/.test(normalizedPath) ||
     normalizedPath.startsWith("//") ||
-    normalizedPath.split("/").some((segment) => segment === ".." || segment === "." || hasControlCharacter(segment))
+    normalizedPath
+      .split("/")
+      .some((segment) => segment === ".." || segment === "." || hasControlCharacter(segment))
   );
 };
 
@@ -91,7 +93,8 @@ export const normalize = async (
   }
   const title = raw.title.trim() || fallbackTitleFromUrl(sourceLocator);
   const body = eventBody(title, sourceLocator);
-  const sourceTimestampKind = raw.sourceTimestampKind ?? (sourceType === "history" ? "visited" : "created");
+  const sourceTimestampKind =
+    raw.sourceTimestampKind ?? (sourceType === "history" ? "visited" : "created");
   return {
     ok: true,
     value: {

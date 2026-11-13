@@ -51,7 +51,6 @@ const eventsFor = (entries: SearchEntry[]): SourceEvent[] =>
     timestamp: entry.source.sourceTimestamp,
   }));
 
-
 it("returns TOPIC_INSUFFICIENT_DATA when entries are empty or have no vectors", () => {
   expect(analyzeTopics([], [])).toEqual({
     ok: false,
@@ -269,7 +268,13 @@ describe("Phase 3 boundary cases", () => {
   it("uses UTC months and falls back invalid timestamps to 1970-01", () => {
     const invalidEntry = createEntry("invalid", "Invalid", "本文", Date.UTC(2026, 0, 1), [1, 0]);
     invalidEntry.source.sourceTimestamp = Number.NaN;
-    const validEntry = createEntry("valid", "Valid", "本文", Date.UTC(2026, 11, 31, 23, 30), [1, 0]);
+    const validEntry = createEntry(
+      "valid",
+      "Valid",
+      "本文",
+      Date.UTC(2026, 11, 31, 23, 30),
+      [1, 0],
+    );
     const entries = [validEntry, invalidEntry];
     const result = analyzeTopics(entries, eventsFor(entries));
     expect(result.ok).toBe(true);

@@ -1,18 +1,18 @@
+import { chunk } from "./chunk.js";
 import type {
   EmbeddingCache,
   MemoryChunk,
+  RawFile,
   Result,
   SearchEntry,
   SourceDocument,
   SourceEvent,
-  StoredSnapshot,
   StoreError,
-  RawFile,
+  StoredSnapshot,
 } from "./domain.js";
-import { chunk } from "./chunk.js";
-import { normalize } from "./normalize.js";
-import type { Hasher } from "./hasher.js";
 import type { EmbeddingProvider } from "./embedding.js";
+import type { Hasher } from "./hasher.js";
+import { normalize } from "./normalize.js";
 
 export interface SyncSummary {
   documentsCount: number;
@@ -31,7 +31,12 @@ export interface MemoryStore {
   clearAll(): Promise<Result<void, StoreError>>;
 }
 
-const emptySnapshot = (): StoredSnapshot => ({ documents: [], chunks: [], embeddings: [], events: [] });
+const emptySnapshot = (): StoredSnapshot => ({
+  documents: [],
+  chunks: [],
+  embeddings: [],
+  events: [],
+});
 
 export class InMemoryStore implements MemoryStore {
   private snapshot = emptySnapshot();
