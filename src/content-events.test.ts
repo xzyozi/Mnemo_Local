@@ -184,24 +184,25 @@ describe("Issue #9 content events", () => {
     expect(snapshot.value.documents[0]?.title).toBe("新しいタイトル");
   });
 
-  const store = new InMemoryStore();
-  const provider = new DeterministicEmbeddingProvider("test", 8);
-  await syncRawFilesToStore(
-    [{ ...history(2000), title: "新しいタイトル" }],
-    store,
-    fakeHasher,
-    provider,
-  );
-  await syncRawFilesToStore(
-    [{ ...history(1000), title: "古いタイトル" }],
-    store,
-    fakeHasher,
-    provider,
-  );
-  const snapshot = await store.loadAll();
-  expect(snapshot.ok).toBe(true);
-  if (!snapshot.ok) return;
-  expect(snapshot.value.documents[0]?.title).toBe("新しいタイトル");
-  expect(snapshot.value.documents[0]?.sourceTimestamp).toBe(2000);
-});
+  it("keeps the latest history record when records are out of order", async () => {
+    const store = new InMemoryStore();
+    const provider = new DeterministicEmbeddingProvider("test", 8);
+    await syncRawFilesToStore(
+      [{ ...history(2000), title: "新しいタイトル" }],
+      store,
+      fakeHasher,
+      provider,
+    );
+    await syncRawFilesToStore(
+      [{ ...history(1000), title: "古いタイトル" }],
+      store,
+      fakeHasher,
+      provider,
+    );
+    const snapshot = await store.loadAll();
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok) return;
+    expect(snapshot.value.documents[0]?.title).toBe("新しいタイトル");
+    expect(snapshot.value.documents[0]?.sourceTimestamp).toBe(2000);
+  });
 });
