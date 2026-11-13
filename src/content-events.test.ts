@@ -154,7 +154,10 @@ describe("Issue #9 content events", () => {
     const store = new InMemoryStore();
     const provider = new DeterministicEmbeddingProvider("test", 8);
     await syncRawFilesToStore(
-      [{ ...history(1000), title: "最初のタイトル" }, { ...history(1000), title: "後のタイトル" }],
+      [
+        { ...history(1000), title: "最初のタイトル" },
+        { ...history(1000), title: "後のタイトル" },
+      ],
       store,
       fakeHasher,
       provider,
