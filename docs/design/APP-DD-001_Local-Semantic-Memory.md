@@ -5,17 +5,18 @@ document_number: "APP-DD-001"
 document_role: "normative"
 ssot_scope: "module_behavior"
 status: "draft"
-version: "0.5"
+version: "0.6"
 created_at: "2026-11-12"
-updated_at: "2026-11-12"
+updated_at: "2026-11-13"
 author: "xzyozi"
 owner: "xzyozi"
-purpose: "Local Semantic Memoryの入力処理、チャンク化、Embedding、IndexedDB永続化、ハイブリッド検索、トピッククラスタリング、興味変遷グラフ可視化のモジュール契約を定義するため"
+purpose: "Local Semantic Memoryの入力処理、チャンク化、Embedding、IndexedDB永続化、イベント蓄積、ハイブリッド検索、トピッククラスタリング、興味変遷グラフ可視化のモジュール契約を定義するため"
 related_documents:
   - "ドキュメントガバナンス（相対パス: ../README.md）"
   - "Local Semantic Memory 基本設計書（相対パス: ./APP-BD-001_Local-Semantic-Memory.md）"
   - "Local Semantic Memory データ構造仕様書（相対パス: ./APP-DS-001_Local-Semantic-Memory.md）"
   - "Local Semantic Memory 要求仕様（相対パス: ../features/local-semantic-memory.md）"
+  - "ADR-002 コンテンツとイベントの分離（相対パス: ../adr/002-content-event-separation.md）"
 ---
 
 # Local Semantic Memory 詳細設計書（ドラフト）
@@ -32,10 +33,12 @@ related_documents:
 - 見出し・文字数単位のチャンク分割とSHA-256ハッシュ算出
 - `passage: ` / `query: `接頭辞を付与するEmbedding生成
 - IndexedDBおよびインメモリストアによる`SourceDocument`・`MemoryChunk`・`EmbeddingCache`の差分保存と再利用
+- 履歴・ブックマークURLの正規化と、訪問・登録・更新の`SourceEvent`としての追記保存
+- v1→v2のIndexedDB移行（履歴由来データの破棄と`events`ストアの追加）
 - 日本語3-gram・2-gram全文検索とコサイン類似度ベクトル検索のRRFハイブリッド検索
 - チャンクEmbeddingに基づくブラウザ内トピッククラスタリング（Phase 3）
 - クラスタ代表語・頻出語からの自動トピック命名（Phase 3）
-- `sourceTimestamp`と`sourceTimestampKind`に基づく月次興味変遷集計（Phase 3）
+- `SourceEvent`の`timestamp`に基づく月次興味変遷集計（Phase 3）
 - 外部依存なしのSVGによるインタラクティブな興味変遷グラフ描画（Phase 3）
 - 入力、正規化、Embedding、永続化、検索、トピック解析で発生するエラーの分類と状態保全
 
@@ -48,26 +51,29 @@ related_documents:
 
 ### 2.0 データ型
 
-| 型名                   | 主なフィールド・定義                                                                                                               |
-| :--------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
-| `SourceType`           | `"markdown"` / `"history"` / `"bookmark"`                                                                                          |
-| `RawFile`              | `path`, `title`, `body`, `updatedAt`, `sourceType?`, `sourceTimestampKind?`                                                        |
-| `SourceDocument`       | `sourceId`, `sourceType`, `sourceLocator`, `title`, `body`, `sourceTimestamp`, `sourceTimestampKind`, `sourceHash`, `schemaVersion` |
-| `MemoryChunk`          | `chunkId`, `sourceId`, `ordinal`, `body`, `contentHash`, `charStart`, `charEnd`, `schemaVersion`                                   |
-| `EmbeddingCache`       | `chunkId`, `modelId`, `dimensions`, `vector`, `generatedAt`                                                                        |
-| `SearchEntry`          | `chunk`, `source`, `embedding?`                                                                                                    |
-| `Topic`                | `topicId`, `label`, `algorithmVersion`, `createdAt`                                                                                |
-| `TopicAssignment`      | `assignmentId`, `chunkId`, `topicId`, `score`                                                                                      |
-| `MonthlyTopicCount`    | `month`, `counts`, `total`                                                                                                         |
-| `TopicAnalysisResult`  | `topics`, `assignments`, `timeline`                                                                                                |
-| `SearchOptions`        | `sourceIds?`, `sourceTypes?`, `updatedAfter?`, `updatedBefore?`, `queryVector?`, `rrfK?`, `topicId?`                                |
-| `Result<T, E>`         | `{ ok: true, value: T }` または `{ ok: false, error: E }`                                                                          |
-| `NormalizeError`       | `"PATH_INVALID"` / `"URL_EXCLUDED"` / `"DOCUMENT_EMPTY"`                                                                           |
-| `EmbeddingError`       | `"EMBEDDING_EMPTY"` / `"EMBEDDING_INVALID_VECTOR"` / `"EMBEDDING_FAILED"`                                                          |
-| `StoreError`           | `"STORE_READ_FAILED"` / `"STORE_WRITE_FAILED"` / `"STORE_CLEAR_FAILED"`                                                            |
-| `IndexError`           | `"INDEX_SIZE_LIMIT"` / `"INDEX_BUILD_FAILED"`                                                                                      |
-| `SearchError`          | `"QUERY_EMPTY"` / `"SEARCH_FAILED"`                                                                                                |
-| `TopicError`           | `"TOPIC_INSUFFICIENT_DATA"` / `"TOPIC_ANALYSIS_FAILED"`                                                                            |
+| 型名                  | 主なフィールド・定義                                                                                                                |
+| :-------------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| `SourceType`          | `"markdown"` / `"history"` / `"bookmark"`                                                                                           |
+| `RawFile`             | `path`, `title`, `body`, `updatedAt`, `sourceType?`, `sourceTimestampKind?`                                                         |
+| `SourceDocument`      | `sourceId`, `sourceType`, `sourceLocator`, `title`, `body`, `sourceTimestamp`, `sourceTimestampKind`, `sourceHash`, `schemaVersion` |
+| `EventType`           | `"updated"` / `"visited"` / `"created"`                                                                                             |
+| `SourceEvent`         | `sourceId`, `eventType`, `timestamp`, `originalLocator?`                                                                            |
+| `MemoryChunk`         | `chunkId`, `sourceId`, `ordinal`, `body`, `contentHash`, `charStart`, `charEnd`, `schemaVersion`                                    |
+| `EmbeddingCache`      | `chunkId`, `modelId`, `dimensions`, `vector`, `generatedAt`                                                                         |
+| `SearchEntry`         | `chunk`, `source`, `embedding?`                                                                                                     |
+| `Topic`               | `topicId`, `label`, `algorithmVersion`, `createdAt`                                                                                 |
+| `TopicAssignment`     | `assignmentId`, `chunkId`, `topicId`, `score`                                                                                       |
+| `MonthlyTopicCount`   | `month`, `counts`, `total`                                                                                                          |
+| `TopicAnalysisResult` | `topics`, `assignments`, `timeline`                                                                                                 |
+| `StoredSnapshot`      | `documents`, `chunks`, `embeddings`, `events`                                                                                       |
+| `SearchOptions`       | `sourceIds?`, `sourceTypes?`, `updatedAfter?`, `updatedBefore?`, `queryVector?`, `rrfK?`, `topicId?`                                |
+| `Result<T, E>`        | `{ ok: true, value: T }` または `{ ok: false, error: E }`                                                                           |
+| `NormalizeError`      | `"PATH_INVALID"` / `"URL_EXCLUDED"` / `"DOCUMENT_EMPTY"`                                                                            |
+| `EmbeddingError`      | `"EMBEDDING_EMPTY"` / `"EMBEDDING_INVALID_VECTOR"` / `"EMBEDDING_FAILED"`                                                           |
+| `StoreError`          | `"STORE_READ_FAILED"` / `"STORE_WRITE_FAILED"` / `"STORE_CLEAR_FAILED"`                                                             |
+| `IndexError`          | `"INDEX_SIZE_LIMIT"` / `"INDEX_BUILD_FAILED"`                                                                                       |
+| `SearchError`         | `"QUERY_EMPTY"` / `"SEARCH_FAILED"`                                                                                                 |
+| `TopicError`          | `"TOPIC_INSUFFICIENT_DATA"` / `"TOPIC_ANALYSIS_FAILED"`                                                                             |
 
 ### 2.1 InputReader
 
@@ -79,9 +85,27 @@ related_documents:
 
 ### 2.2 Normalizer
 
-**責務**: RawFileを検証し、SourceDocumentを生成する。
+**責務**: RawFileを検証し、SourceDocumentとSourceEventを生成する。
 
 - `normalize(raw: RawFile, hasher: Hasher): Promise<Result<SourceDocument, NormalizeError>>`
+- `normalizeUrl(urlText: string): string`
+
+**契約**:
+
+- 履歴・ブックマークの`sourceId`は、`history:`または`bookmark:`と、正規化後のURLから生成する。訪問時刻は`sourceId`に含めない。
+- 履歴・ブックマークの`body`は「タイトル + URLのホストとパス」から組み立てる。クエリ文字列は含めない。`SourceDocument.sourceTimestamp`には、そのレコードの`raw.updatedAt`を設定する（既存ドキュメントとの統合は2.5で扱う）。
+- Markdownの`sourceId`は`markdown:`と正規化相対パスから生成する。移動・リネームは別の`sourceId`として扱う。
+
+**URL正規化規則（`normalizeUrl`）**:
+
+| 項目                                   | 扱い         |
+| :------------------------------------- | :----------- |
+| `#fragment`                            | 除去する     |
+| クエリのうち`utm_*`、`fbclid`、`gclid` | 除去する     |
+| 上記以外のクエリ                       | 維持する     |
+| ホスト名                               | 小文字にする |
+| 末尾の`/`                              | 維持する     |
+| `www.`の有無                           | 維持する     |
 
 ### 2.3 Chunker
 
@@ -98,13 +122,24 @@ related_documents:
 
 ### 2.5 MemoryStore
 
-**責務**: `SourceDocument`、`MemoryChunk`、`EmbeddingCache`の永続化、差分更新、全削除を担う。
+**責務**: `SourceDocument`、`MemoryChunk`、`EmbeddingCache`、`SourceEvent`の永続化、差分更新、全削除を担う。
 
 - `loadAll(): Promise<Result<StoredSnapshot, StoreError>>`
 - `saveBatch(snapshot: StoredSnapshot): Promise<Result<void, StoreError>>`
 - `deleteSource(sourceId: string): Promise<Result<void, StoreError>>`
 - `clearAll(): Promise<Result<void, StoreError>>`
 - `syncRawFilesToStore(rawFiles: RawFile[], store: MemoryStore, hasher: Hasher, embeddingProvider: EmbeddingProvider): Promise<Result<SyncSummary, StoreError>>`
+
+**契約**:
+
+- `saveBatch`は`SourceEvent`を複合キー`(sourceId, eventType, timestamp)`で`put`する。同じキーは上書きされ、重複しない。
+- `syncRawFilesToStore`は、取り込んだ全レコードの`SourceEvent`を保存する。保存済みの最新`timestamp`による読み飛ばしは行わない。
+- `SourceEvent`は、正規化した`SourceDocument`の`sourceId`、`sourceTimestampKind`（`eventType`）、`sourceTimestamp`（`timestamp`）から作る。履歴・ブックマークの`originalLocator`には、`RawFile.path`（正規化前のURL）を設定する。
+- 同じ`sourceId`のレコードが複数ある場合、`SourceDocument`は1件にまとめる。`sourceHash`が保存済みと同じ場合は、チャンクとEmbeddingを再生成しない。
+- 取り込み後、`SourceDocument.sourceTimestamp`と`sourceTimestampKind`は、そのドキュメントの最新の`SourceEvent`の値に更新する。
+- `deleteSource`は`SourceEvent`を削除しない。`clearAll`は`SourceEvent`を含むすべてのデータを削除する。
+- `IndexedDbStore`は、v1のDBを開く際にDS 4章のv1→v2移行を実行する。移行に失敗した場合は`STORE_READ_FAILED`を返し、v1のデータを変更しない。
+- `SyncSummary`に、保存した`SourceEvent`の件数（`eventsCount`）を追加する。
 
 ### 2.6 SearchIndex
 
@@ -122,9 +157,9 @@ related_documents:
 
 ### 2.7 TopicAnalyzer（Phase 3）
 
-**責務**: チャンクのEmbeddingベクトルをクラスタリングし、代表トピック名を付与し、月次タイムラインを集計する。
+**責務**: チャンクのEmbeddingベクトルをクラスタリングし、代表トピック名を付与し、`SourceEvent`から月次タイムラインを集計する。
 
-- `analyzeTopics(entries: SearchEntry[], options?: TopicOptions): Result<TopicAnalysisResult, TopicError>`
+- `analyzeTopics(entries: SearchEntry[], events: SourceEvent[], options?: TopicOptions): Result<TopicAnalysisResult, TopicError>`
 
 **契約**:
 
@@ -132,7 +167,10 @@ related_documents:
 - 各チャンクのEmbeddingベクトル間のコサイン距離または類似度に基づき、ブラウザ内で完結するクラスタリング（リーダー・フォロワー法またはコサイン類似度閾値クラスタリング、目標クラスタ数3〜8個）を行う。
 - 各クラスタの所属チャンクのタイトル、見出し、本文の頻出語（名詞・カタカナ語・重要2-3gram）から代表語を抽出し、トピックの`label`（例: 「設計・アーキテクチャ」「AI・機械学習」等）を決定する。
 - クラスタ所属度として`score`（クラスタ重心とのコサイン類似度）を算出し、`TopicAssignment`を生成する。
-- `sourceTimestamp`（Unixミリ秒）を`YYYY-MM`形式の月次キーへマッピングし、月別・トピック別のチャンク出現数を集計して`MonthlyTopicCount[]`を返す。
+- `SourceEvent.timestamp`（Unixミリ秒）を`YYYY-MM`形式の月次キーへマッピングし、月別・トピック別のEvent件数を集計して`MonthlyTopicCount[]`を返す。
+- 各`SourceEvent`の代表トピックは、`sourceId`が一致するチャンクの`TopicAssignment.score`をトピックごとに合計し、合計が最大のトピックとする。Event 1件は代表トピックに1件として数え、按分しない。
+- 参照先の`SourceDocument`が存在しない、または`TopicAssignment`がない`SourceEvent`は、トピックを「不明」として別に数える。
+- 同日・同一URLの訪問は丸めず、件数をそのまま数える。
 - 処理に失敗しても既存のインデックスやストアのデータを破壊しない。
 
 ### 2.8 GraphRenderer（Phase 3）
@@ -162,7 +200,7 @@ sequenceDiagram
     UI->>Store: 起動時に保存済みデータを読込
     Store-->>UI: StoredSnapshot
     UI->>Index: SearchEntry[] をインデックスへ登録
-    UI->>Analyzer: analyzeTopics(entries)
+    UI->>Analyzer: analyzeTopics(entries, events)
     Analyzer-->>UI: TopicAnalysisResult (topics, timeline)
     UI->>Renderer: renderTopicTimelineSvg(timeline, topics)
     Renderer-->>UI: SVGSVGElement
@@ -208,6 +246,21 @@ sequenceDiagram
 
 - チャンクのEmbeddingベクトルからブラウザ内でトピッククラスタリングを実行できる。
 - 各クラスタに代表的なトピック名（ラベル）を自動抽出・命名できる。
-- `sourceTimestamp`（更新日時・閲覧日時）に基づいて月別のトピック出現推移を集計できる。
+- `SourceEvent`（更新・閲覧・登録の時刻）に基づいて月別のトピック出現推移を集計できる。
 - SVGによる興味変遷グラフ（タイムライン・スタックバー）を描画し、月別・トピック別の関心の変化を確認できる。
 - グラフやトピック選択に連動して検索結果の絞り込みができる。
+
+## 7. 機能テスト要件（イベント蓄積）
+
+| ID     | 対象                | 検証観点                                                                                               |
+| :----- | :------------------ | :----------------------------------------------------------------------------------------------------- |
+| TR-001 | Normalizer          | 同一URLで訪問時刻が異なる履歴3件を正規化すると、`sourceId`は同一で、`SourceEvent`は3件になる           |
+| TR-002 | Normalizer          | `#fragment`、`utm_*`、`fbclid`、`gclid`を除いたURLが同一なら、同一の`sourceId`になる                   |
+| TR-003 | Normalizer          | クエリ（上記以外）、末尾の`/`、`www.`が異なるURLは、別の`sourceId`になる                               |
+| TR-004 | syncRawFilesToStore | 同じ入力を2回取り込んでも`SourceEvent`は重複せず、2回目のEmbedding生成は0件になる                      |
+| TR-005 | syncRawFilesToStore | 同一URLで本文（タイトル）が変わった場合のみ、チャンクとEmbeddingを再生成する                           |
+| TR-006 | syncRawFilesToStore | 取り込み後の`sourceTimestamp`が、最新の`SourceEvent`の`timestamp`と一致する                            |
+| TR-007 | MemoryStore         | `deleteSource`の後も`SourceEvent`が残る。`clearAll`の後は`SourceEvent`も残らない                       |
+| TR-008 | IndexedDbStore      | v1のDBを開くと、履歴由来のデータが削除され、Markdownとブックマークの検索結果が変わらない               |
+| TR-009 | TopicAnalyzer       | `timeline`の件数が`SourceEvent`の件数と一致し、チャンクスコア合計が最大のトピックに1件として数えられる |
+| TR-010 | TopicAnalyzer       | 参照先の`SourceDocument`がない`SourceEvent`が「不明」として数えられる                                  |
