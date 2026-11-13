@@ -282,10 +282,11 @@ export const syncRawFilesToStore = async (
     const latestDocument = latest
       ? { ...candidate, sourceTimestamp: latest.timestamp, sourceTimestampKind: latest.eventType }
       : candidate;
-    const document =
-      previous && previous.sourceTimestamp >= latestDocument.sourceTimestamp
-        ? previous
-        : latestDocument;
+    const shouldKeepPrevious =
+      previous &&
+      candidate.sourceType === "history" &&
+      previous.sourceTimestamp >= latestDocument.sourceTimestamp;
+    const document = shouldKeepPrevious ? previous : latestDocument;
     documentsToSave.push(document);
     let chunks: MemoryChunk[];
     if (previous?.sourceHash === document.sourceHash) {

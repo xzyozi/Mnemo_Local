@@ -150,17 +150,11 @@ describe("Issue #9 content events", () => {
     if (!second.ok) return;
     expect(second.value.documents[0]?.title).toBe("記事タイトル");
   });
-  it("does not roll a document back when an older export is imported", async () => {
+  it("keeps the first title for same-timestamp history records", async () => {
     const store = new InMemoryStore();
     const provider = new DeterministicEmbeddingProvider("test", 8);
     await syncRawFilesToStore(
-      [{ ...history(2000), title: "新しいタイトル" }],
-      store,
-      fakeHasher,
-      provider,
-    );
-    await syncRawFilesToStore(
-      [{ ...history(1000), title: "古いタイトル" }],
+      [{ ...history(1000), title: "最初のタイトル" }, { ...history(1000), title: "後のタイトル" }],
       store,
       fakeHasher,
       provider,
@@ -168,7 +162,46 @@ describe("Issue #9 content events", () => {
     const snapshot = await store.loadAll();
     expect(snapshot.ok).toBe(true);
     if (!snapshot.ok) return;
-    expect(snapshot.value.documents[0]?.title).toBe("新しいタイトル");
-    expect(snapshot.value.documents[0]?.sourceTimestamp).toBe(2000);
+    expect(snapshot.value.documents[0]?.title).toBe("最初のタイトル");
   });
+
+  it("updates bookmark content when the timestamp is unchanged", async () => {
+    const store = new InMemoryStore();
+    const provider = new DeterministicEmbeddingProvider("test", 8);
+    const bookmark = (title: string) => ({
+      path: "https://example.com/bookmark",
+      title,
+      body: "ignored",
+      updatedAt: 1000,
+      sourceType: "bookmark" as const,
+      sourceTimestampKind: "created" as const,
+    });
+    await syncRawFilesToStore([bookmark("古いタイトル")], store, fakeHasher, provider);
+    await syncRawFilesToStore([bookmark("新しいタイトル")], store, fakeHasher, provider);
+    const snapshot = await store.loadAll();
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok) return;
+    expect(snapshot.value.documents[0]?.title).toBe("新しいタイトル");
+  });
+
+  const store = new InMemoryStore();
+  const provider = new DeterministicEmbeddingProvider("test", 8);
+  await syncRawFilesToStore(
+    [{ ...history(2000), title: "新しいタイトル" }],
+    store,
+    fakeHasher,
+    provider,
+  );
+  await syncRawFilesToStore(
+    [{ ...history(1000), title: "古いタイトル" }],
+    store,
+    fakeHasher,
+    provider,
+  );
+  const snapshot = await store.loadAll();
+  expect(snapshot.ok).toBe(true);
+  if (!snapshot.ok) return;
+  expect(snapshot.value.documents[0]?.title).toBe("新しいタイトル");
+  expect(snapshot.value.documents[0]?.sourceTimestamp).toBe(2000);
+});
 });
