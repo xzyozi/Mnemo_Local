@@ -101,7 +101,7 @@ export class IndexedDbStore implements MemoryStore {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onerror = () => reject(request.error);
       request.onsuccess = () => resolve(request.result);
-      request.onupgradeneeded = () => {
+      request.onupgradeneeded = (event) => {
         const db = request.result;
         const transaction = request.transaction;
         if (!transaction) return;
@@ -113,7 +113,7 @@ export class IndexedDbStore implements MemoryStore {
           db.createObjectStore("embeddings", { keyPath: "chunkId" });
         if (!db.objectStoreNames.contains("events"))
           db.createObjectStore("events", { keyPath: ["sourceId", "eventType", "timestamp"] });
-        if (request.oldVersion < 2) {
+        if (event.oldVersion < 2) {
           const historyIds = new Set<string>();
           const docCursor = transaction.objectStore("sourceDocuments").openCursor();
           docCursor.onsuccess = () => {
