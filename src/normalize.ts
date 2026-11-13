@@ -1,9 +1,6 @@
 import type { NormalizeError, RawFile, Result, SourceDocument, SourceType } from "./domain.js";
 import type { Hasher } from "./hasher.js";
 
-const hasControlCharacter = (segment: string): boolean =>
-  [...segment].some((char) => char.charCodeAt(0) <= 0x1f);
-
 const isInvalidPath = (path: string): boolean => {
   const normalizedPath = path.replaceAll("\\", "/");
   return (
@@ -12,29 +9,39 @@ const isInvalidPath = (path: string): boolean => {
     normalizedPath.startsWith("/") ||
     /^[A-Za-z]:/.test(normalizedPath) ||
     normalizedPath.startsWith("//") ||
-    normalizedPath
-      .split("/")
-      .some((segment) => segment === ".." || segment === "." || hasControlCharacter(segment))
+    normalizedPath.split("/").some((segment) => segment === ".." || segment === "." || /[\u0000-\u001f]/.test(segment))
   );
+};
+
+export const normalizeUrl = (urlText: string): string => {
+  const url = new URL(urlText);
+  url.hash = "";
+  for (const key of [...url.searchParams.keys()]) {
+    if (key.toLowerCase().startsWith("utm_") || ["fbclid", "gclid"].includes(key.toLowerCase())) {
+      url.searchParams.delete(key);
+    }
+  }
+  url.hostname = url.hostname.toLowerCase();
+  return url.toString();
 };
 
 const isValidHttpUrl = (urlText: string): boolean => {
   try {
-    const parsed = new URL(urlText);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
+    const url = new URL(urlText);
+    return url.protocol === "http:" || url.protocol === "https:";
   } catch {
     return false;
   }
 };
 
 const fallbackTitleFromUrl = (urlText: string): string => {
-  try {
-    const parsed = new URL(urlText);
-    const lastSegment = parsed.pathname.split("/").filter(Boolean).at(-1);
-    return lastSegment || parsed.hostname || "Untitled";
-  } catch {
-    return "Untitled";
-  }
+  const url = new URL(urlText);
+  return url.pathname.split("/").filter(Boolean).at(-1) || url.hostname || "Untitled";
+};
+
+const eventBody = (title: string, locator: string): string => {
+  const url = new URL(locator);
+  return `${title} ${url.hostname}${url.pathname}`.trim();
 };
 
 export const normalize = async (
@@ -42,7 +49,6 @@ export const normalize = async (
   hasher: Hasher,
 ): Promise<Result<SourceDocument, NormalizeError>> => {
   const sourceType: SourceType = raw.sourceType ?? "markdown";
-
   if (sourceType === "markdown") {
     if (isInvalidPath(raw.path)) return { ok: false, error: "PATH_INVALID" };
     if (raw.body.trim().length === 0) return { ok: false, error: "DOCUMENT_EMPTY" };
@@ -53,7 +59,7 @@ export const normalize = async (
       ok: true,
       value: {
         sourceId: `markdown:${sourceLocator}`,
-        sourceType: "markdown",
+        sourceType,
         sourceLocator,
         title,
         body: raw.body,
@@ -65,34 +71,22 @@ export const normalize = async (
     };
   }
 
-  // history or bookmark
-  if (!isValidHttpUrl(raw.path)) {
-    return { ok: false, error: "URL_EXCLUDED" };
-  }
-  if (raw.body.trim().length === 0) {
-    return { ok: false, error: "DOCUMENT_EMPTY" };
-  }
-
-  const sourceLocator = raw.path;
+  if (!isValidHttpUrl(raw.path)) return { ok: false, error: "URL_EXCLUDED" };
+  const sourceLocator = normalizeUrl(raw.path);
   const title = raw.title.trim() || fallbackTitleFromUrl(sourceLocator);
-  const sourceTimestampKind =
-    raw.sourceTimestampKind ?? (sourceType === "history" ? "visited" : "created");
-  const sourceId =
-    sourceType === "history"
-      ? `history:${sourceLocator}:${raw.updatedAt}`
-      : `bookmark:${sourceLocator}`;
-
+  const body = eventBody(title, sourceLocator);
+  const sourceTimestampKind = raw.sourceTimestampKind ?? (sourceType === "history" ? "visited" : "created");
   return {
     ok: true,
     value: {
-      sourceId,
+      sourceId: `${sourceType}:${sourceLocator}`,
       sourceType,
       sourceLocator,
       title,
-      body: raw.body,
+      body,
       sourceTimestamp: raw.updatedAt,
       sourceTimestampKind,
-      sourceHash: await hasher.digest(`${sourceLocator}\n${raw.body}`),
+      sourceHash: await hasher.digest(`${sourceLocator}\n${body}`),
       schemaVersion: "1",
     },
   };
