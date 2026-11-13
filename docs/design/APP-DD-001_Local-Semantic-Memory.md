@@ -139,7 +139,7 @@ related_documents:
 - 取り込み後、`SourceDocument.sourceTimestamp`と`sourceTimestampKind`は、そのドキュメントの最新の`SourceEvent`の値に更新する。
 - `deleteSource`は`SourceEvent`を削除しない。`clearAll`は`SourceEvent`を含むすべてのデータを削除する。
 - `IndexedDbStore`は、v1のDBを開く際にDS 4章のv1→v2移行を実行する。移行に失敗した場合は`STORE_READ_FAILED`を返し、v1のデータを変更しない。
-- `SyncSummary`に、保存した`SourceEvent`の件数（`eventsCount`）を追加する。
+- `SyncSummary`に、取り込み後にStoreへ保持されているSourceEventの総件数（`eventsCount`）を追加する。
 
 ### 2.6 SearchIndex
 

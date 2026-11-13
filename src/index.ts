@@ -106,10 +106,14 @@ const bootstrap = async (): Promise<void> => {
     const embeddings = new Map(
       snapshot.embeddings.map((embedding) => [embedding.chunkId, embedding]),
     );
-    return snapshot.chunks.flatMap((chunk) => {
-      const source = documents.get(chunk.sourceId);
+    return snapshot.chunks.flatMap((storedChunk) => {
+      const source = documents.get(storedChunk.sourceId);
       if (!source) return [];
-      return [{ chunk, source, embedding: embeddings.get(chunk.chunkId) }];
+      return [{
+        chunk: storedChunk,
+        source,
+        embedding: embeddings.get(storedChunk.chunkId),
+      }];
     });
   };
 
