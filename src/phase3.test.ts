@@ -53,7 +53,7 @@ const eventsFor = (entries: SearchEntry[]): SourceEvent[] =>
 
 
 it("returns TOPIC_INSUFFICIENT_DATA when entries are empty or have no vectors", () => {
-  expect(analyzeTopics([])).toEqual({
+  expect(analyzeTopics([], [])).toEqual({
     ok: false,
     error: "TOPIC_INSUFFICIENT_DATA",
   });
@@ -81,7 +81,7 @@ it("returns TOPIC_INSUFFICIENT_DATA when entries are empty or have no vectors", 
       schemaVersion: "1",
     },
   };
-  expect(analyzeTopics([noVectorEntry])).toEqual({
+  expect(analyzeTopics([noVectorEntry], [])).toEqual({
     ok: false,
     error: "TOPIC_INSUFFICIENT_DATA",
   });

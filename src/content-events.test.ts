@@ -22,7 +22,7 @@ const history = (timestamp: number, url = "https://Example.com/article?utm_sourc
 
 describe("Issue #9 content events", () => {
   it("normalizes tracking parameters while preserving other query and slash details", () => {
-    expect(normalizeUrl("https://Example.com/a/?utm_source=x&keep=1#part")).toBe("https://example.com/a/?keep=1");
+    expect(normalizeUrl("https://Example.com/a/?utm_source=x&fbclid=f&gclid=g&keep=1#part")).toBe("https://example.com/a/?keep=1");
     expect(normalizeUrl("https://www.example.com/a")).not.toBe(normalizeUrl("https://example.com/a"));
   });
 
@@ -73,5 +73,36 @@ describe("Issue #9 content events", () => {
     expect(afterClear.ok).toBe(true);
     if (!afterClear.ok) return;
     expect(afterClear.value.events).toHaveLength(0);
+  });
+  it("rebuilds embeddings only when content changes and updates latest timestamp", async () => {
+    const store = new InMemoryStore();
+    const provider = new DeterministicEmbeddingProvider("test", 8);
+    const first = await syncRawFilesToStore([history(1000)], store, fakeHasher, provider);
+    expect(first.ok).toBe(true);
+    const changed = { ...history(2000), title: "変更タイトル" };
+    const second = await syncRawFilesToStore([changed], store, fakeHasher, provider);
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.value.newEmbeddingsCount).toBeGreaterThan(0);
+    const snapshot = await store.loadAll();
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok) return;
+    expect(snapshot.value.documents[0]?.sourceTimestamp).toBe(2000);
+  });
+
+  it("counts an event without a source document as unknown", async () => {
+    const { analyzeTopics } = await import("./topic-analyzer.js");
+    const store = new InMemoryStore();
+    const provider = new DeterministicEmbeddingProvider("test", 8);
+    const synced = await syncRawFilesToStore([history(1000)], store, fakeHasher, provider);
+    expect(synced.ok).toBe(true);
+    if (!synced.ok) return;
+    const result = analyzeTopics(synced.value.entries, [
+      { sourceId: "history:missing", eventType: "visited", timestamp: 1000 },
+    ]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.topics.some((topic) => topic.topicId === "unknown")).toBe(true);
+    expect(result.value.timeline[0]?.total).toBe(1);
   });
 });
