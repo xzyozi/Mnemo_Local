@@ -1,8 +1,8 @@
 import type { NormalizeError, RawFile, Result, SourceDocument, SourceType } from "./domain.js";
 import type { Hasher } from "./hasher.js";
 
-const hasControlCharacter = (segment: string): boolean =>
-  [...segment].some((char) => char.charCodeAt(0) <= 0x1f);
+const hasControlCharacter = (value: string): boolean =>
+  [...value].some((character) => character.charCodeAt(0) < 32);
 
 const isInvalidPath = (path: string): boolean => {
   const normalizedPath = path.replaceAll("\\", "/");
@@ -18,23 +18,43 @@ const isInvalidPath = (path: string): boolean => {
   );
 };
 
+export const normalizeUrl = (urlText: string): string => {
+  const url = new URL(urlText);
+  const isTrackingKey = (part: string): boolean => {
+    const key = part.split("=", 1)[0] ?? "";
+    try {
+      const decodedKey = decodeURIComponent(key).toLowerCase();
+      return decodedKey.startsWith("utm_") || decodedKey === "fbclid" || decodedKey === "gclid";
+    } catch {
+      return false;
+    }
+  };
+  const query = url.search
+    .slice(1)
+    .split("&")
+    .filter((part) => part.length > 0 && !isTrackingKey(part))
+    .join("&");
+  const base = `${url.protocol}//${url.host}${url.pathname}`;
+  return query ? `${base}?${query}` : base;
+};
+
 const isValidHttpUrl = (urlText: string): boolean => {
   try {
-    const parsed = new URL(urlText);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
+    const url = new URL(urlText);
+    return url.protocol === "http:" || url.protocol === "https:";
   } catch {
     return false;
   }
 };
 
 const fallbackTitleFromUrl = (urlText: string): string => {
-  try {
-    const parsed = new URL(urlText);
-    const lastSegment = parsed.pathname.split("/").filter(Boolean).at(-1);
-    return lastSegment || parsed.hostname || "Untitled";
-  } catch {
-    return "Untitled";
-  }
+  const url = new URL(urlText);
+  return url.pathname.split("/").filter(Boolean).at(-1) || url.hostname || "Untitled";
+};
+
+const eventBody = (title: string, locator: string): string => {
+  const url = new URL(locator);
+  return `${title} ${url.hostname}${url.pathname}`.trim();
 };
 
 export const normalize = async (
@@ -42,7 +62,6 @@ export const normalize = async (
   hasher: Hasher,
 ): Promise<Result<SourceDocument, NormalizeError>> => {
   const sourceType: SourceType = raw.sourceType ?? "markdown";
-
   if (sourceType === "markdown") {
     if (isInvalidPath(raw.path)) return { ok: false, error: "PATH_INVALID" };
     if (raw.body.trim().length === 0) return { ok: false, error: "DOCUMENT_EMPTY" };
@@ -53,7 +72,7 @@ export const normalize = async (
       ok: true,
       value: {
         sourceId: `markdown:${sourceLocator}`,
-        sourceType: "markdown",
+        sourceType,
         sourceLocator,
         title,
         body: raw.body,
@@ -65,23 +84,24 @@ export const normalize = async (
     };
   }
 
-  // history or bookmark
-  if (!isValidHttpUrl(raw.path)) {
-    return { ok: false, error: "URL_EXCLUDED" };
-  }
-  if (raw.body.trim().length === 0) {
+  if (!isValidHttpUrl(raw.path)) return { ok: false, error: "URL_EXCLUDED" };
+  if (sourceType === "bookmark" && raw.body.trim().length === 0) {
     return { ok: false, error: "DOCUMENT_EMPTY" };
   }
-
-  const sourceLocator = raw.path;
+  let sourceLocator: string;
+  try {
+    sourceLocator = normalizeUrl(raw.path);
+  } catch {
+    return { ok: false, error: "URL_EXCLUDED" };
+  }
   const title = raw.title.trim() || fallbackTitleFromUrl(sourceLocator);
+  const body = eventBody(title, sourceLocator);
   const sourceTimestampKind =
     raw.sourceTimestampKind ?? (sourceType === "history" ? "visited" : "created");
   const sourceId =
-    sourceType === "history"
-      ? `history:${sourceLocator}:${raw.updatedAt}`
-      : `bookmark:${sourceLocator}`;
-
+    sourceType === "history" && raw.sourceTimestampKind === undefined
+      ? `${sourceType}:${sourceLocator}:${raw.updatedAt}`
+      : `${sourceType}:${sourceLocator}`;
   return {
     ok: true,
     value: {
@@ -89,10 +109,10 @@ export const normalize = async (
       sourceType,
       sourceLocator,
       title,
-      body: raw.body,
+      body,
       sourceTimestamp: raw.updatedAt,
       sourceTimestampKind,
-      sourceHash: await hasher.digest(`${sourceLocator}\n${raw.body}`),
+      sourceHash: await hasher.digest(`${sourceLocator}\n${body}`),
       schemaVersion: "1",
     },
   };

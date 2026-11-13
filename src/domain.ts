@@ -1,6 +1,14 @@
 export type SourceType = "markdown" | "history" | "bookmark";
 
 export type SourceTimestampKind = "updated" | "visited" | "created";
+export type EventType = SourceTimestampKind;
+
+export interface SourceEvent {
+  sourceId: string;
+  eventType: EventType;
+  timestamp: number;
+  originalLocator?: string;
+}
 
 export interface RawFile {
   path: string;
@@ -92,6 +100,13 @@ export interface TopicAnalysisResult {
   topics: Topic[];
   assignments: TopicAssignment[];
   timeline: MonthlyTopicCount[];
+}
+
+export interface StoredSnapshot {
+  documents: SourceDocument[];
+  chunks: MemoryChunk[];
+  embeddings: EmbeddingCache[];
+  events: SourceEvent[];
 }
 
 export interface TopicOptions {
