@@ -238,7 +238,6 @@ describe("Phase 3 Topic Analyzer and Timeline", () => {
   });
 });
 
-
 describe("Phase 3 boundary cases", () => {
   it("falls back to a generated label when keyword candidates are absent", () => {
     const result = analyzeTopics([createEntry("empty", "", "", Date.UTC(2026, 0, 1), [1, 0])]);
@@ -273,7 +272,14 @@ describe("Phase 3 boundary cases", () => {
   it("escapes external values in SVG markup", () => {
     const svg = generateTopicTimelineSvg(
       [{ month: "2026-01<&", counts: { "topic<&": 1 }, total: 1 }],
-      [{ topicId: "topic<&", label: "<script>alert(1)</script>", algorithmVersion: "1", createdAt: "2026-01-01" }],
+      [
+        {
+          topicId: "topic<&",
+          label: "<script>alert(1)</script>",
+          algorithmVersion: "1",
+          createdAt: "2026-01-01",
+        },
+      ],
     );
     expect(svg).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(svg).not.toContain("<script>alert(1)</script>");
