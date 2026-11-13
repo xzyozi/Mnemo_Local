@@ -102,7 +102,7 @@ const formatMonth = (timestamp: number): string => {
 
 export const analyzeTopics = (
   entries: SearchEntry[],
-  events: SourceEvent[] = [],
+  events: SourceEvent[],
   options: TopicOptions = {},
 ): Result<TopicAnalysisResult, TopicError> => {
   if (!entries || entries.length === 0) {

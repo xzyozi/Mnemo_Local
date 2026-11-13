@@ -1,28 +1,35 @@
 import type { NormalizeError, RawFile, Result, SourceDocument, SourceType } from "./domain.js";
 import type { Hasher } from "./hasher.js";
 
-const isInvalidPath = (path: string): boolean => {
-  const normalizedPath = path.replaceAll("\\", "/");
-  return (
-    normalizedPath.length === 0 ||
-    normalizedPath === "." ||
-    normalizedPath.startsWith("/") ||
-    /^[A-Za-z]:/.test(normalizedPath) ||
-    normalizedPath.startsWith("//") ||
-    normalizedPath.split("/").some((segment) => segment === ".." || segment === "." || /[\u0000-\u001f]/.test(segment))
-  );
+const hasControlCharacter = (value: string): boolean =>
+  [...value].some((character) => character.charCodeAt(0) < 32);
+
+
+const normalizedPath = path.replaceAll("\\", "/");
+return (
+  normalizedPath.length === 0 ||
+  normalizedPath === "." ||
+  normalizedPath.startsWith("/") ||
+  /^[A-Za-z]:/.test(normalizedPath) ||
+  normalizedPath.startsWith("//") ||
+  normalizedPath.split("/").some((segment) => segment === ".." || segment === "." || hasControlCharacter(segment))
+);
 };
 
 export const normalizeUrl = (urlText: string): string => {
   const url = new URL(urlText);
-  url.hash = "";
-  for (const key of [...url.searchParams.keys()]) {
-    if (key.toLowerCase().startsWith("utm_") || ["fbclid", "gclid"].includes(key.toLowerCase())) {
-      url.searchParams.delete(key);
-    }
-  }
-  url.hostname = url.hostname.toLowerCase();
-  return url.toString();
+  const queryText = urlText.split("?", 2)[1]?.split("#", 1)[0] ?? "";
+  const query = queryText
+    .split("&")
+    .filter((part) => {
+      if (!part) return false;
+      const key = part.split("=", 1)[0] ?? "";
+      const decodedKey = decodeURIComponent(key).toLowerCase();
+      return !decodedKey.startsWith("utm_") && decodedKey !== "fbclid" && decodedKey !== "gclid";
+    })
+    .join("&");
+  const base = `${url.protocol}//${url.host}${url.pathname}`;
+  return query ? `${base}?${query}` : base;
 };
 
 const isValidHttpUrl = (urlText: string): boolean => {
