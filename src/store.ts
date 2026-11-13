@@ -88,10 +88,38 @@ export class IndexedDbStore implements MemoryStore {
       request.onsuccess = () => resolve(request.result);
       request.onupgradeneeded = () => {
         const db = request.result;
+        const transaction = request.transaction;
+        if (!transaction) return;
         if (!db.objectStoreNames.contains("sourceDocuments")) db.createObjectStore("sourceDocuments", { keyPath: "sourceId" });
         if (!db.objectStoreNames.contains("chunks")) db.createObjectStore("chunks", { keyPath: "chunkId" });
         if (!db.objectStoreNames.contains("embeddings")) db.createObjectStore("embeddings", { keyPath: "chunkId" });
         if (!db.objectStoreNames.contains("events")) db.createObjectStore("events", { keyPath: ["sourceId", "eventType", "timestamp"] });
+        if (request.oldVersion < 2) {
+          const historyIds = new Set<string>();
+          const docCursor = transaction.objectStore("sourceDocuments").openCursor();
+          docCursor.onsuccess = () => {
+            const cursor = docCursor.result;
+            if (!cursor) {
+              const chunkCursor = transaction.objectStore("chunks").openCursor();
+              chunkCursor.onsuccess = () => {
+                const chunk = chunkCursor.result;
+                if (!chunk) return;
+                if (historyIds.has((chunk.value as { sourceId: string }).sourceId)) {
+                  transaction.objectStore("embeddings").delete((chunk.value as { chunkId: string }).chunkId);
+                  chunk.delete();
+                }
+                chunk.continue();
+              };
+              return;
+            }
+            const document = cursor.value as SourceDocument;
+            if (document.sourceType === "history") {
+              historyIds.add(document.sourceId);
+              cursor.delete();
+            }
+            cursor.continue();
+          };
+        }
       };
     });
   }
