@@ -237,3 +237,46 @@ describe("Phase 3 Topic Analyzer and Timeline", () => {
     });
   });
 });
+
+
+describe("Phase 3 boundary cases", () => {
+  it("falls back to a generated label when keyword candidates are absent", () => {
+    const result = analyzeTopics([createEntry("empty", "", "", Date.UTC(2026, 0, 1), [1, 0])]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.topics[0]?.label).toBe("トピック 1");
+  });
+
+  it("respects maxClusters and keeps every valid assignment", () => {
+    const entries = [
+      createEntry("a", "A", "A", Date.UTC(2026, 0, 1), [1, 0]),
+      createEntry("b", "B", "B", Date.UTC(2026, 0, 2), [0, 1]),
+      createEntry("c", "C", "C", Date.UTC(2026, 0, 3), [-1, 0]),
+    ];
+    const result = analyzeTopics(entries, { maxClusters: 1, minSimilarity: 1 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.topics).toHaveLength(1);
+    expect(result.value.assignments).toHaveLength(entries.length);
+  });
+
+  it("uses UTC months and falls back invalid timestamps to 1970-01", () => {
+    const result = analyzeTopics([
+      createEntry("valid", "Valid", "本文", Date.UTC(2026, 11, 31, 23, 30), [1, 0]),
+      createEntry("invalid", "Invalid", "本文", Number.NaN, [1, 0]),
+    ]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.timeline.map((item) => item.month)).toEqual(["1970-01", "2026-12"]);
+  });
+
+  it("escapes external values in SVG markup", () => {
+    const svg = generateTopicTimelineSvg(
+      [{ month: "2026-01<&", counts: { "topic<&": 1 }, total: 1 }],
+      [{ topicId: "topic<&", label: "<script>alert(1)</script>", algorithmVersion: "1", createdAt: "2026-01-01" }],
+    );
+    expect(svg).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(svg).not.toContain("<script>alert(1)</script>");
+    expect(svg).toContain("topic&lt;&amp;");
+  });
+});
