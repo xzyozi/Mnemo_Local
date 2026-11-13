@@ -260,9 +260,11 @@ describe("Phase 3 boundary cases", () => {
   });
 
   it("uses UTC months and falls back invalid timestamps to 1970-01", () => {
+    const invalidEntry = createEntry("invalid", "Invalid", "本文", Date.UTC(2026, 0, 1), [1, 0]);
+    invalidEntry.source.sourceTimestamp = Number.NaN;
     const result = analyzeTopics([
       createEntry("valid", "Valid", "本文", Date.UTC(2026, 11, 31, 23, 30), [1, 0]),
-      createEntry("invalid", "Invalid", "本文", Number.NaN, [1, 0]),
+      invalidEntry,
     ]);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
