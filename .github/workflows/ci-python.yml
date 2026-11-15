@@ -1,0 +1,79 @@
+name: Python CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-python-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Python Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Check pyproject.toml presence
+        id: check_pyproject
+        shell: bash
+        run: |
+          if [ -f pyproject.toml ]; then
+            echo "has_pyproject=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pyproject=false" >> "$GITHUB_OUTPUT"
+            echo "No pyproject.toml found at repository root; skipping Python checks."
+          fi
+
+      - name: Install uv
+        if: steps.check_pyproject.outputs.has_pyproject == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        if: steps.check_pyproject.outputs.has_pyproject == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ hashFiles('.python-version') != '' && '' || '3.12' }}
+          python-version-file: ${{ hashFiles('.python-version') != '' && '.python-version' || '' }}
+
+      - name: Synchronize development dependencies
+        if: steps.check_pyproject.outputs.has_pyproject == 'true'
+        run: uv sync --extra dev
+
+      - name: Run Ruff linter
+        if: steps.check_pyproject.outputs.has_pyproject == 'true'
+        run: uv run --no-sync ruff check .
+
+      - name: Run Ruff formatter check
+        if: steps.check_pyproject.outputs.has_pyproject == 'true'
+        run: uv run --no-sync ruff format --check .
+
+      - name: Run Mypy
+        if: steps.check_pyproject.outputs.has_pyproject == 'true'
+        run: uv run --no-sync mypy .
+
+      - name: Run Pytest
+        if: steps.check_pyproject.outputs.has_pyproject == 'true'
+        run: |
+          uv run --no-sync pytest || {
+            exit_code=$?
+            if [ $exit_code -eq 5 ]; then
+              echo "No tests collected (exit code 5); treating as success."
+              exit 0
+            fi
+            exit $exit_code
+          }
