@@ -4,9 +4,9 @@ document_type: "document_governance"
 document_role: "normative"
 ssot_scope: "document_governance"
 status: "approved"
-version: "1.0"
+version: "1.1"
 created_at: "2026-10-02"
-updated_at: "2026-11-05"
+updated_at: "2026-11-20"
 author: "[作成者 / チーム名]"
 owner: "[ドキュメント責任者 / チーム名]"
 purpose: "プロジェクト全体の文書分類、SSOT、メタデータ、ライフサイクル、参照規約を定義するため"
@@ -22,7 +22,7 @@ related_documents:
 ## 1. 適用範囲と基本原則
 
 - `docs/` 配下で新規作成する文書に適用する。
-- ルートの `README.md` はプロジェクト概要として管理し、Frontmatterを必須としない。ただし、文字コード・改行とMermaid図はCIで検証する。
+- ルートの `README.md`（英語、基準版）と `README.ja.md`（日本語訳）はプロジェクト概要として管理し、Frontmatterを必須としない。内容を変更する場合は、英語版を先に更新する。ただし、文字コード・改行とMermaid図はCIで検証する。`docs/` 配下の文書は日本語で記述する。
 - 既存文書へは、内容を更新するタイミングで可能な範囲から適用する。
 - 1つの情報領域に対して正本を1つだけ持つ。
 - 他文書は正本を参照し、同じ定義をコピーして二重管理しない。

@@ -1,8 +1,7 @@
 name: Validate docs
 
-# docs/ 配下とルートREADME.mdのメタデータ・リンク・文字コードを検証する。
-# Python はこのジョブ内でのみ使用する（派生プロジェクトの言語には影響しない）。
-# ci.yml の契約（.github/ci.sh / Makefile の ci）は派生プロジェクト側のために空けておく。
+# docs/ 配下とルートのREADME.md・README.ja.mdについて、メタデータ・リンク・文字コードを検証する。
+# Python はこのジョブ内でのみ使用する。
 
 on:
   push:
@@ -10,6 +9,7 @@ on:
     paths:
       - "docs/**/*.md"
       - "README.md"
+      - "README.ja.md"
       - ".github/scripts/validate_docs.py"
       - ".github/scripts/validateMermaidMarkdown.mjs"
       - ".github/workflows/validate-docs.yml"
@@ -23,6 +23,7 @@ on:
     paths:
       - "docs/**/*.md"
       - "README.md"
+      - "README.ja.md"
       - ".github/scripts/validate_docs.py"
       - ".github/scripts/validateMermaidMarkdown.mjs"
       - ".github/workflows/validate-docs.yml"
@@ -55,4 +56,4 @@ jobs:
 
       - name: Validate docs
         shell: bash
-        run: python .github/scripts/validate_docs.py docs README.md
+        run: python .github/scripts/validate_docs.py docs README.md README.ja.md
