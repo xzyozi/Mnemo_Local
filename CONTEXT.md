@@ -7,6 +7,7 @@
 - `docs/` 配下のドキュメント、設計テンプレート、Issueで使用する用語に適用する。
 - この用語集にない用語を追加する場合は、既存用語との重複・多義性を確認してから追記する。
 - 用語の変更は、関連する設計書と必要なADRの影響範囲を確認する。
+- `src/` の型名・識別子は、「プロダクト用語」の節で定義する用語と一致させる。
 
 ## コア概念
 
@@ -106,6 +107,77 @@
 
 - 文書種別、役割、SSOT範囲、状態、版数、責任者、関連文書を記録する。
 - Frontmatterを文書属性の正本とし、本文のメタデータ表は視認性のための表示とする。
+
+## プロダクト用語
+
+Local Semantic Memory が扱うデータの用語。フィールド・制約の正本はDS（`docs/design/APP-DS-001_Local-Semantic-Memory.md`）、処理の契約の正本はDD（`docs/design/APP-DD-001_Local-Semantic-Memory.md`）である。ここには要約と使い分けだけを記載する。判断理由は ADR-002 を参照する。
+
+### SourceDocument（入力元ドキュメント）
+
+**定義**: 検索対象の入力元1件を表す、コンテンツの単位。Markdownは正規化相対パス、履歴・ブックマークは正規化URLで1件になる。
+
+**使い分け**:
+
+- 同じURLへの複数回の訪問は、1件の `SourceDocument` と複数の `SourceEvent` で表す。訪問ごとに `SourceDocument` を作らない。
+- `sourceTimestamp` は、最新の `SourceEvent` の時刻を表す。
+
+**正本**: DS 3.1
+
+### sourceId（入力元ID）
+
+**定義**: `SourceDocument` を一意に識別する安定した識別子。`markdown:` + 正規化相対パス、`history:` + 正規化URL、`bookmark:` + 正規化URL の形式をとる。
+
+**ルール**: 訪問時刻を含めない。Markdownの移動・リネームは別の `sourceId` として扱い、追跡しない。
+
+**正本**: DS 3.1、DD 2.2
+
+### MemoryChunk（チャンク）
+
+**定義**: `SourceDocument` の本文を分割した、検索とEmbeddingの単位。
+
+**使い分け**: 入力元の同一性は `SourceDocument`、本文の同一性は `MemoryChunk` の `contentHash` で判定する。
+
+**正本**: DS 3.2
+
+### EmbeddingCache（Embeddingキャッシュ）
+
+**定義**: `MemoryChunk` ごとのベクトルと、生成したモデルの識別子（`modelId`）を保存したもの。同じ `chunkId`、`contentHash`、`modelId` であれば再生成しない。
+
+**正本**: DS 3.3
+
+### SourceEvent（イベント）
+
+**定義**: 入力元に対する、更新・閲覧・登録の1回分の記録。主キーは `(sourceId, eventType, timestamp)` で、追記専用とする。
+
+**使い分け**:
+
+- `eventType` は `updated`（Markdown更新）、`visited`（履歴閲覧）、`created`（ブックマーク登録）のいずれか。
+- 月次の興味変遷は、`SourceEvent` の件数から集計する。`MemoryChunk` の件数では数えない。
+- `SourceDocument` を削除しても、`SourceEvent` は残す。全データ削除では、すべて削除する。
+
+**正本**: DS 3.4、ADR-002
+
+### コンテンツとイベントの分離
+
+**定義**: 検索・ベクトル用のデータ（`SourceDocument`、`MemoryChunk`、`EmbeddingCache`）と、時系列用のデータ（`SourceEvent`）を、別のものとして保存する方針。Embeddingの重複計算を避け、集計方法を保存データと独立して変更できるようにする。
+
+**正本**: ADR-002
+
+### TopicAssignment と代表トピック
+
+**定義**: `TopicAssignment` は、チャンクがトピックへ所属する度合い（`score`）の記録。代表トピックは、同じ `sourceId` のチャンクの `score` を、トピックごとに合計して最大になったトピックである。
+
+**ルール**: `SourceEvent` 1件は、代表トピックに1件として数える。複数のトピックへ按分しない。
+
+**正本**: DS 3.5、DD 2.7
+
+### 不明（トピック）
+
+**定義**: 参照先の `SourceDocument` がない、または `TopicAssignment` がない `SourceEvent` を数えるための、特別なトピック（`topicId` は `unknown`）。
+
+**使い分け**: Markdownを移動・リネームすると、旧パスの `updated` イベントは「不明」として残る。
+
+**正本**: DD 2.7
 
 ## 用語追加・変更の手順
 

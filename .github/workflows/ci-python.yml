@@ -23,8 +23,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - name: Check pyproject.toml presence
         id: check_pyproject
@@ -47,8 +45,7 @@ jobs:
         if: steps.check_pyproject.outputs.has_pyproject == 'true'
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ hashFiles('.python-version') != '' && '' || '3.12' }}
-          python-version-file: ${{ hashFiles('.python-version') != '' && '.python-version' || '' }}
+          python-version: "3.12"
 
       - name: Synchronize development dependencies
         if: steps.check_pyproject.outputs.has_pyproject == 'true'
